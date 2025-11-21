@@ -11,8 +11,8 @@ const TabLayout = () => {
     // ... (phần code getIcons của bạn giữ nguyên) ...
     if (routeName === "index") {
       return (
-        <MaterialCommunityIcons
-          name="food-fork-drink"
+        <Ionicons
+          name={focused ? "home" : "home-outline"}
           size={size}
           color={focused ? APP_COLOR.ORANGE : APP_COLOR.GREY}
         />
@@ -67,7 +67,7 @@ const TabLayout = () => {
       <Tabs.Screen
         name="index"
         options={{
-          tabBarLabel: "Home", // 👈 Sửa từ 'title' thành 'tabBarLabel'
+          tabBarLabel: "Trang chủ", // 👈 Sửa từ 'title' thành 'tabBarLabel'
         }}
       />
       <Tabs.Screen

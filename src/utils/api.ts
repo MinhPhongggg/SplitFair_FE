@@ -21,6 +21,27 @@ export const getAccountAPI = () => {
   return axios.get<IUserAuth>(url);
 };
 
+export const changePasswordAPI = (currentPassword: string, newPassword: string) => {
+  const url = `/api/auth/change-password`;
+  return axios.post(url, { currentPassword, newPassword });
+};
+
+export const scanReceiptAPI = (fileUri: string, fileType: string = 'image/jpeg', fileName: string = 'receipt.jpg') => {
+  const url = `/api/ocr/scan`;
+  const formData = new FormData();
+  formData.append('file', {
+    uri: fileUri,
+    type: fileType,
+    name: fileName,
+  } as any);
+
+  return axios.post(url, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+};
+
 export const printAsyncStorage = () => {
   AsyncStorage.getAllKeys((err, keys) => {
     AsyncStorage.multiGet(keys!, (error, stores) => {

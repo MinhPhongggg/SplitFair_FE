@@ -34,16 +34,17 @@ const getInitials = (name: string) => {
 interface AvatarProps {
   name: string;
   size?: number;
+  style?: any;
 }
 
-const Avatar = ({ name, size = 40 }: AvatarProps) => {
+const Avatar = ({ name, size = 40, style }: AvatarProps) => {
   // Luôn render View để giữ layout, nếu không có tên thì hiển thị ?
   const displayName = name || '?';
   const initials = getInitials(displayName);
   const color = getColor(displayName);
 
   return (
-    <View style={[styles.avatar, { backgroundColor: color, width: size, height: size, borderRadius: size / 2 }]}>
+    <View style={[styles.avatar, { backgroundColor: color, width: size, height: size, borderRadius: size / 2 }, style]}>
       <Text style={[styles.avatarText, { fontSize: size * 0.4 }]}>{initials}</Text>
     </View>
   );

@@ -9,8 +9,9 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  KeyboardAvoidingView, // 👈 1. Import KeyboardAvoidingView
-  Platform, // 👈 2. Import Platform
+  KeyboardAvoidingView,
+  Platform,
+  Alert, // 👈 Import Alert
 } from 'react-native';
 import { router } from 'expo-router';
 import { APP_COLOR } from '@/utils/constant';
@@ -19,11 +20,18 @@ import {
   useGetGroupBalances,
   useGetExpensesByGroup,
   useGetGroupMembers,
+  useCreateExpense,
+  useSaveExpenseShares,
+  useGetBillsByGroup,
+  useCreateBill,
+  useGetCategories,
 } from '@/api/hooks';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import SkiaPieChart from '@/component/SkiaPieChart';
 import { Balance } from '@/types/stats.types';
 import { useCurrentApp } from '@/context/app.context';
+import { useToast } from '@/context/toast.context';
+import { ExpenseShareSaveRequest } from '@/types/expense.types';
 import Avatar from '@/component/Avatar';
 
 const PIE_COLORS = ['#007AFF', '#FFCC00', '#34C759', '#FF3B30', '#8E8E93'];
@@ -46,6 +54,71 @@ const GroupStatsTab = ({ route }: any) => {
   const { data: balances, isLoading: l2 } = useGetGroupBalances(groupId);
   const { data: expenses, isLoading: l3 } = useGetExpensesByGroup(groupId);
   const { data: members, isLoading: l4 } = useGetGroupMembers(groupId);
+  const { data: bills } = useGetBillsByGroup(groupId);
+  const { data: categories } = useGetCategories();
+  
+  const { showToast } = useToast();
+  const { mutateAsync: createBill } = useCreateBill(groupId);
+  const { mutateAsync: createExpense } = useCreateExpense('');
+  const { mutateAsync: saveShares } = useSaveExpenseShares(groupId);
+
+  const handleSettlement = async (item: any) => {
+    try {
+        // 1. Tìm hoặc tạo Bill "Thanh toán nợ"
+        let settlementBillId = bills?.find(b => b.description === "Thanh toán nợ")?.id;
+
+        if (!settlementBillId) {
+            const categoryId = categories?.[0]?.id;
+            if (!categoryId) {
+                 showToast('error', 'Lỗi', 'Không tìm thấy danh mục.');
+                 return;
+            }
+
+            const newBill = await createBill({
+                groupId: groupId,
+                description: "Thanh toán nợ",
+                categoryId: categoryId,
+                currency: 'VND',
+                createdBy: appState?.userId ? String(appState.userId) : '',
+                status: 'ACTIVE',
+            });
+            settlementBillId = newBill.id;
+        }
+
+        // 2. Tạo Expense
+        const newExpense = await createExpense({
+            billId: settlementBillId,
+            groupId: groupId,
+            description: `${item.from} thanh toán cho ${item.to}`,
+            amount: item.amount,
+            paidBy: item.fromId,
+            createdBy: appState?.userId ? String(appState.userId) : '',
+            userId: item.fromId,
+            status: 'PENDING',
+        });
+
+        // 3. Lưu chia tiền (Shares)
+        const shareRequest: ExpenseShareSaveRequest = {
+            expenseId: newExpense.id,
+            totalAmount: newExpense.amount,
+            paidBy: item.fromId,
+            shares: [
+                {
+                    userId: item.toId,
+                    shareAmount: item.amount,
+                    percentage: 100,
+                }
+            ],
+            currency: 'VND',
+        };
+
+        await saveShares(shareRequest);
+        showToast('success', 'Thành công', 'Đã ghi lại thanh toán.');
+    } catch (error) {
+        console.error(error);
+        showToast('error', 'Lỗi', 'Không thể tạo thanh toán.');
+    }
+  };
 
   // --- LOGIC LỌC ---
   const filteredExpenses = useMemo(() => {
@@ -88,6 +161,56 @@ const GroupStatsTab = ({ route }: any) => {
     setShowFilterModal(false);
   };
 
+  // --- LOGIC GỢI Ý THANH TOÁN ---
+  const debtSuggestions = useMemo(() => {
+    if (!balances) return [];
+    
+    // 1. Tách người nợ và chủ nợ
+    let debtors = balances
+      .filter(b => parseFloat(b.netAmount) < -1) // Lọc số âm (nợ), bỏ qua sai số nhỏ
+      .map(b => ({ ...b, amount: Math.abs(parseFloat(b.netAmount)) }))
+      .sort((a, b) => b.amount - a.amount); // Sắp xếp giảm dần
+
+    let creditors = balances
+      .filter(b => parseFloat(b.netAmount) > 1) // Lọc số dương (chủ nợ)
+      .map(b => ({ ...b, amount: parseFloat(b.netAmount) }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const suggestions = [];
+
+    // 2. Thuật toán tham lam (Greedy) để ghép cặp
+    let i = 0; // index debtors
+    let j = 0; // index creditors
+
+    while (i < debtors.length && j < creditors.length) {
+      const debtor = debtors[i];
+      const creditor = creditors[j];
+
+      // Số tiền giao dịch là min của 2 bên
+      const amount = Math.min(debtor.amount, creditor.amount);
+
+      if (amount > 0) {
+        suggestions.push({
+          from: debtor.userName,
+          fromId: debtor.userId,
+          to: creditor.userName,
+          toId: creditor.userId,
+          amount: amount
+        });
+      }
+
+      // Cập nhật số dư sau giao dịch
+      debtor.amount -= amount;
+      creditor.amount -= amount;
+
+      // Nếu ai đã hết nợ/đòi xong thì chuyển sang người tiếp theo
+      if (debtor.amount < 1) i++;
+      if (creditor.amount < 1) j++;
+    }
+
+    return suggestions;
+  }, [balances]);
+
   const getMemberName = (m: any) => m.userName || m.user?.userName || 'Thành viên';
   const getMemberId = (m: any) => m.userId || m.user?.id;
 
@@ -100,20 +223,48 @@ const GroupStatsTab = ({ route }: any) => {
     return <ActivityIndicator size="large" color={APP_COLOR.ORANGE} style={styles.center} />;
   }
 
-  // ... (Logic tính toán thống kê giữ nguyên) ...
-  const totalSpent = stats?.reduce((sum, stat) => sum + stat.totalAmount, 0) || 0;
-  const pieData = stats
-    ? stats.map((stat, index) => ({
+  // --- LOGIC TÍNH TOÁN THỐNG KÊ (LOẠI BỎ THANH TOÁN NỢ) ---
+  const settlementBillIds = useMemo(() => {
+      return bills?.filter(b => b.description === "Thanh toán nợ").map(b => b.id) || [];
+  }, [bills]);
+
+  const realExpenses = useMemo(() => {
+      return expenses?.filter(e => !settlementBillIds.includes(e.billId)) || [];
+  }, [expenses, settlementBillIds]);
+
+  const calculatedStats = useMemo(() => {
+      if (!realExpenses || !members) return [];
+      const map: Record<string, number> = {};
+      
+      realExpenses.forEach(e => {
+          map[e.paidBy] = (map[e.paidBy] || 0) + e.amount;
+      });
+      
+      return Object.keys(map).map(userId => {
+          const member = members.find((m: any) => (m.userId || m.user?.id) === userId);
+          const name = member ? (member.userName || member.user?.userName || 'Thành viên') : 'Ai đó';
+          return {
+              userName: name,
+              totalAmount: map[userId]
+          };
+      });
+  }, [realExpenses, members]);
+
+  const totalSpent = calculatedStats.reduce((sum, stat) => sum + stat.totalAmount, 0);
+  
+  const pieData = calculatedStats.map((stat, index) => ({
         key: stat.userName,
         value: stat.totalAmount,
         color: PIE_COLORS[index % PIE_COLORS.length],
-      }))
-    : [];
+  }));
     
   const myBalanceObj = balances?.find(b => b.userId === appState?.userId);
-  const myPaymentObj = stats?.find(s => s.userName === appState?.userName);
   const myNetBalance = myBalanceObj ? parseFloat(myBalanceObj.netAmount) : 0;
-  const myTotalPaid = myPaymentObj ? myPaymentObj.totalAmount : 0;
+  
+  const myTotalPaid = realExpenses
+    ? realExpenses.filter(e => e.paidBy === appState?.userId).reduce((sum, e) => sum + e.amount, 0)
+    : 0;
+    
   const myActualCost = myTotalPaid - myNetBalance;
 
   // ... (renderPersonalStats & renderBalanceList giữ nguyên) ...
@@ -187,6 +338,61 @@ const GroupStatsTab = ({ route }: any) => {
     </View>
   );
 
+  const renderDebtSuggestions = () => (
+    <View style={styles.card}>
+      <Text style={styles.cardHeader}>Gợi ý thanh toán</Text>
+      {debtSuggestions.length > 0 ? (
+        debtSuggestions.map((item, index) => (
+          <TouchableOpacity 
+            key={index} 
+            style={styles.suggestionItem}
+            onPress={() => {
+                Alert.alert(
+                    "Xác nhận thanh toán",
+                    `Bạn có muốn đánh dấu là ${item.from} đã trả ${item.amount.toLocaleString('vi-VN')}đ cho ${item.to} không?`,
+                    [
+                        { text: "Hủy", style: "cancel" },
+                        { 
+                            text: "Xác nhận", 
+                            onPress: () => handleSettlement(item)
+                        }
+                    ]
+                );
+            }}
+          >
+            <View style={styles.suggestionRow}>
+                {/* Avatars */}
+                <View style={{ width: 60, height: 36, marginRight: 5 }}>
+                    <View style={{ position: 'absolute', left: 0, zIndex: 2 }}>
+                        <Avatar name={item.from} size={36} style={{ marginRight: 0 }} />
+                    </View>
+                    <View style={{ position: 'absolute', left: 20, zIndex: 1 }}>
+                        <View style={{ borderWidth: 2, borderColor: 'white', borderRadius: 18 }}>
+                            <Avatar name={item.to} size={36} style={{ marginRight: 0 }} />
+                        </View>
+                    </View>
+                </View>
+
+                {/* Text */}
+                <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <Text style={styles.suggestionText} numberOfLines={1}>
+                        <Text style={{fontWeight: 'bold', color: '#333'}}>{item.from}</Text>
+                        <Text> trả </Text>
+                        <Text style={{fontWeight: 'bold', color: '#333'}}>{item.to}</Text>
+                    </Text>
+                </View>
+
+                {/* Amount */}
+                <Text style={styles.suggestionAmount}>{item.amount.toLocaleString('vi-VN')}đ</Text>
+            </View>
+          </TouchableOpacity>
+        ))
+      ) : (
+        <Text style={styles.emptyText}>Không có khoản nợ nào cần thanh toán.</Text>
+      )}
+    </View>
+  );
+
   // --- TAB GIAO DỊCH ---
   const renderTransactions = () => (
     <View>
@@ -195,11 +401,11 @@ const GroupStatsTab = ({ route }: any) => {
         <View style={styles.chartContainer}>
           <SkiaPieChart data={pieData} size={140} totalValue={totalSpent} />
           <View style={styles.legendContainer}>
-            {stats?.map((stat, index) => (
+            {calculatedStats.map((stat, index) => (
               <View style={styles.legendItem} key={stat.userName}>
                 <View style={[styles.legendColor, { backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }]} />
                 <Text style={styles.legendName}>{stat.userName}</Text>
-                <Text style={styles.legendPercent}>{((stat.totalAmount / totalSpent) * 100).toFixed(0)}%</Text>
+                <Text style={styles.legendPercent}>{totalSpent > 0 ? ((stat.totalAmount / totalSpent) * 100).toFixed(0) : 0}%</Text>
               </View>
             ))}
           </View>
@@ -361,6 +567,7 @@ const GroupStatsTab = ({ route }: any) => {
           {activeTab === 'BALANCES' ? (
               <>
                   {renderPersonalStats()}
+                  {renderDebtSuggestions()}
                   {renderBalanceList()}
               </>
           ) : (
@@ -478,6 +685,20 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: '#f0f0f0', padding: 15, borderRadius: 10, alignItems: 'center',
   },
   resetButtonText: { color: '#333', fontWeight: 'bold', fontSize: 16 },
+
+  // Suggestion Styles
+  suggestionItem: {
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f5f5f5',
+  },
+  suggestionRow: {
+    flexDirection: 'row', alignItems: 'center',
+  },
+  suggestionAmount: {
+    fontSize: 15, fontWeight: 'bold', color: '#FF3B30', marginLeft: 10
+  },
+  suggestionText: {
+    fontSize: 14, color: '#666',
+  },
 });
 
 export default GroupStatsTab;

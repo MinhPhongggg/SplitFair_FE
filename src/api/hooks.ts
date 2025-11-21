@@ -16,7 +16,7 @@ import { useCurrentApp } from '@/context/app.context';
 
 // 2. IMPORT CÁC HÀM API ĐÃ ĐỒNG NHẤT
 // Auth API (từ file có sẵn của splitapp-fe)
-import { loginAPI, registerAPI } from '@/utils/api';
+import { loginAPI, registerAPI, changePasswordAPI } from '@/utils/api';
 
 // Các API tính năng
 import {
@@ -67,6 +67,17 @@ export const useRegister = () => {
   return useMutation<IUserAuth, AxiosError, RegisterPayload>({
     mutationFn: (payload) =>
       registerAPI(payload.userName, payload.email, payload.password),
+  });
+};
+
+interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export const useChangePassword = () => {
+  return useMutation<void, AxiosError, ChangePasswordPayload>({
+    mutationFn: (payload) => changePasswordAPI(payload.currentPassword, payload.newPassword),
   });
 };
 

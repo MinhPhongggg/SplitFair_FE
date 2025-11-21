@@ -134,6 +134,8 @@ const CreateExpenseScreen = () => {
   const [showMethodModal, setShowMethodModal] = useState(false);
 
   // --- API ---
+
+  // --- API ---
   const { data: members, isLoading: isLoadingMembers } = useGetGroupMembers(
     groupId as string
   );

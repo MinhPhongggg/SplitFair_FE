@@ -42,9 +42,12 @@ const GroupExpensesTab = ({ route }: any) => {
   // 👇 SỬA DÒNG 2: Lấy cả isLoadingMembers
   const { data: members, isLoading: isLoadingMembers } = useGetGroupMembers(groupId);
 
+  const getMemberName = (m: any) => m.userName || m.user?.userName || 'Thành viên';
+  const getMemberId = (m: any) => m.userId || m.user?.id;
+
   const getPayerName = (paidByUuid: string) => {
-    const member = members?.find((m) => m.userId === paidByUuid);
-    return member?.userName || 'Không rõ';
+    const member = members?.find((m) => getMemberId(m) === paidByUuid);
+    return member ? getMemberName(member) : 'Không rõ';
   };
 
   if (isLoadingExpenses || isLoadingMembers) {

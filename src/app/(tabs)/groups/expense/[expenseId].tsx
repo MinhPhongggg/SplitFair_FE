@@ -8,6 +8,7 @@ import {
   FlatList,
   TouchableOpacity,
   StatusBar,
+  Alert, // 👈 Import Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
@@ -15,6 +16,7 @@ import {
   useGetExpenseById,
   useGetSharesByExpense,
   useGetGroupMembers,
+  useDeleteExpense, // 👈 Import
 } from '@/api/hooks';
 import { APP_COLOR } from '@/utils/constant';
 import { ExpenseShare } from '@/types/expense.types';
@@ -36,7 +38,35 @@ const ExpenseDetailScreen = () => {
     expense?.groupId || ''
   );
 
-  // Xóa useLayoutEffect cũ vì dùng custom header
+  // Hook xóa expense
+  const { mutate: deleteExpense, isPending: isDeleting } = useDeleteExpense(
+    expense?.groupId || '',
+    expense?.billId || ''
+  );
+
+  const handleDelete = () => {
+    Alert.alert(
+      "Xác nhận xóa",
+      "Bạn có chắc chắn muốn xóa khoản chi tiêu này không? Hành động này sẽ hoàn tác các thay đổi về số dư nợ.",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Xóa",
+          style: "destructive",
+          onPress: () => {
+            deleteExpense(expenseId as string, {
+              onSuccess: () => {
+                router.back();
+              },
+              onError: () => {
+                Alert.alert("Lỗi", "Không thể xóa chi tiêu.");
+              }
+            });
+          },
+        },
+      ]
+    );
+  };
 
   if (isLoadingExpense || isLoadingShares || isLoadingMembers) {
     return (
@@ -104,17 +134,26 @@ const ExpenseDetailScreen = () => {
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Chi tiết chi tiêu</Text>
-        <TouchableOpacity 
-          onPress={() =>
-            router.push({
-              pathname: '/(tabs)/groups/expense/edit/[expenseId]',
-              params: { expenseId: expense.id, groupId: expense.groupId },
-            })
-          }
-          style={styles.editButton}
-        >
-          <Text style={styles.editButtonText}>Sửa</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row' }}>
+            <TouchableOpacity 
+            onPress={handleDelete}
+            style={[styles.editButton, { marginRight: 10 }]}
+            disabled={isDeleting}
+            >
+            <Ionicons name="trash-outline" size={24} color="#FF3B30" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+            onPress={() =>
+                router.push({
+                pathname: '/(tabs)/groups/expense/edit/[expenseId]',
+                params: { expenseId: expense.id, groupId: expense.groupId },
+                })
+            }
+            style={styles.editButton}
+            >
+            <Text style={styles.editButtonText}>Sửa</Text>
+            </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.contentContainer}>

@@ -94,8 +94,12 @@ const BillDetailScreen = () => {
     });
   };
 
+  const getMemberName = (m: any) => m.userName || m.user?.userName || 'Thành viên';
+  const getMemberId = (m: any) => m.userId || m.user?.id;
+
   const getPayerName = (paidById: string) => {
-    return members?.find((m) => m.userId === paidById)?.userName || 'Thành viên';
+    const member = members?.find((m) => getMemberId(m) === paidById);
+    return member ? getMemberName(member) : 'Thành viên';
   };
 
   // --- RENDER ---
