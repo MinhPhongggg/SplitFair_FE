@@ -18,4 +18,5 @@ public class BillDTO {
 
     private Instant createdTime;
     private UUID createdBy;
+    private Boolean isPayment;
 }

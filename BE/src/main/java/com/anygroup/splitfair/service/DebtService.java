@@ -23,4 +23,7 @@ public interface DebtService {
     List<DebtDTO> getDebtsByUser(UUID userId);
 
     List<BalanceDTO> getNetBalancesByGroup(UUID groupId);
+
+    //thêm
+    void markBatchAsSettled(List<UUID> debtIds);
 }

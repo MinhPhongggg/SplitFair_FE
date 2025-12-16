@@ -14,6 +14,8 @@ public interface BillRepository extends JpaRepository<Bill, UUID> {
 
     // Lấy các hóa đơn trong 1 group
     List<Bill> findByGroup_Id(UUID groupId);
+    
+    List<Bill> findByGroup(Group group);
 
     // Lấy các hóa đơn được tạo bởi user cụ thể
     List<Bill> findByCreatedBy(User createdBy);

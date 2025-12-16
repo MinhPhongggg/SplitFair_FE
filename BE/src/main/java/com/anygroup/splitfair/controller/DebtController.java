@@ -80,4 +80,11 @@ public class DebtController {
     public ResponseEntity<List<BalanceDTO>> getNetBalancesByGroup(@PathVariable UUID groupId) {
         return ResponseEntity.ok(debtService.getNetBalancesByGroup(groupId));
     }
+
+    //thêm
+    @PostMapping("/settle-batch")
+    public ResponseEntity<Void> settleBatchDebts(@RequestBody List<UUID> debtIds) {
+        debtService.markBatchAsSettled(debtIds);
+        return ResponseEntity.ok().build();
+    }
 }

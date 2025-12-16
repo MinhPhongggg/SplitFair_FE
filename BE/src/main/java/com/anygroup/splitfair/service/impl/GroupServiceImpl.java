@@ -30,7 +30,10 @@ public class GroupServiceImpl implements GroupService {
     private final RoleRepository roleRepository;
     private final GroupMapper groupMapper;
     private final GroupMemberMapper groupMemberMapper;
-    private final NotificationService notificationService; // Inject NotificationService
+    private final NotificationService notificationService;
+    private final BillRepository billRepository; // Inject BillRepository
+    private final ExpenseRepository expenseRepository; // Inject ExpenseRepository
+    private final DebtRepository debtRepository; // Inject DebtRepository
 
     @Override
     public GroupDTO createGroup(GroupDTO dto, UUID creatorId) {
@@ -191,7 +194,29 @@ public class GroupServiceImpl implements GroupService {
         Group group = groupRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Group not found"));
 
+        // 1. Xóa tất cả các khoản nợ (Debt) liên quan đến nhóm này
+        // (Debt liên kết với Expense -> Expense liên kết với Bill -> Bill liên kết với Group)
+        // Cách đơn giản nhất là tìm tất cả Bill của Group, rồi tìm Expense, rồi xóa Debt.
+        // Tuy nhiên, nếu cấu hình Cascade đúng thì chỉ cần xóa Bill là đủ.
+        // Nhưng để chắc chắn, ta xóa thủ công hoặc dựa vào Cascade từ Bill.
+        
+        // Ở đây ta sẽ xóa Bill, và nhờ CascadeType.ALL + orphanRemoval=true trong Bill -> Expense -> Debt/Share để xóa hết.
+        // Kiểm tra lại Entity Bill:
+        // @OneToMany(mappedBy = "bill", cascade = CascadeType.ALL, orphanRemoval = true)
+        // private List<Expense> expenses;
+        
+        // Kiểm tra Entity Expense:
+        // @OneToMany(mappedBy = "expense", cascade = CascadeType.ALL, orphanRemoval = true)
+        // private List<Debt> debts;
+        
+        // Vậy chỉ cần xóa Bill là đủ.
+        List<Bill> bills = billRepository.findByGroup(group);
+        billRepository.deleteAll(bills);
+
+        // 2. Xóa thành viên
         groupMemberRepository.deleteAllByGroup_Id(group.getId());
+        
+        // 3. Xóa nhóm
         groupRepository.delete(group);
     }
 

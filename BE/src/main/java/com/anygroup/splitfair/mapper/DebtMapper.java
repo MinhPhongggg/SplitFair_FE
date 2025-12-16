@@ -16,8 +16,26 @@ public interface DebtMapper {
     @Mapping(source = "expense.id", target = "expenseId")
     @Mapping(source = "amountFrom.id", target = "fromUserId")
     @Mapping(source = "amountTo.id", target = "toUserId")
-    @Mapping(source = "expense.bill.group.groupName", target = "groupName")
+    @Mapping(target = "groupName", expression = "java(getGroupName(entity))")
+    @Mapping(source = "amountFrom.userName", target = "fromUserName")
+    @Mapping(source = "amountFrom.avatar", target = "fromUserAvatar")
+    @Mapping(source = "amountTo.userName", target = "toUserName")
+    @Mapping(source = "amountTo.avatar", target = "toUserAvatar")
+
+    //thêm
+    @Mapping(source = "expense.description", target = "expenseDescription")
+    @Mapping(source = "expense.createdTime", target = "createdTime")
+    //
     DebtDTO toDTO(Debt entity);
+
+    default String getGroupName(Debt entity) {
+        if (entity.getExpense() != null && 
+            entity.getExpense().getBill() != null && 
+            entity.getExpense().getBill().getGroup() != null) {
+            return entity.getExpense().getBill().getGroup().getGroupName();
+        }
+        return "Nhóm không xác định";
+    }
 
     // DTO → Entity
     @Mapping(source = "expenseId", target = "expense.id")

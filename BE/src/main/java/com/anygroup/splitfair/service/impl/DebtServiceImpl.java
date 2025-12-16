@@ -28,7 +28,8 @@ public class DebtServiceImpl implements DebtService {
     private final ExpenseShareRepository expenseShareRepository;
     private final ExpenseRepository expenseRepository;
     private final UserRepository userRepository;
-    private final NotificationService notificationService; // Inject NotificationService
+    private final NotificationService notificationService;
+    private final BillRepository billRepository; // Inject BillRepository
 
 
     @Override
@@ -77,19 +78,96 @@ public class DebtServiceImpl implements DebtService {
         debtRepository.deleteById(id);
     }
 
+    // Helper method to find or create a settlement bill
+    private Bill getOrCreateSettlementBill(Group group, User payer, User payee, BigDecimal amountToAdd) {
+        // 1. Tìm các Bill thanh toán trong ngày của Payer trong Group này
+        java.time.Instant startOfDay = java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+        
+        List<Bill> recentBills = billRepository.findByGroup(group).stream()
+                .filter(b -> b.getCreatedBy().getId().equals(payer.getId()))
+                .filter(b -> Boolean.TRUE.equals(b.getIsPayment()))
+                .filter(b -> b.getCreatedTime().isAfter(startOfDay))
+                .collect(Collectors.toList());
+
+        for (Bill bill : recentBills) {
+            // Kiểm tra xem Bill này có phải trả cho Payee không
+            List<Expense> expenses = expenseRepository.findByBill(bill);
+            if (!expenses.isEmpty()) {
+                Expense firstEx = expenses.get(0);
+                List<ExpenseShare> shares = expenseShareRepository.findByExpense(firstEx);
+                if (!shares.isEmpty()) {
+                    User receiver = shares.get(0).getUser();
+                    if (receiver.getId().equals(payee.getId())) {
+                        // Found matching bill!
+                        bill.setTotalAmount(bill.getTotalAmount().add(amountToAdd));
+                        return billRepository.save(bill);
+                    }
+                }
+            }
+        }
+
+        // Không tìm thấy -> Tạo mới
+        Bill newBill = new Bill();
+        newBill.setGroup(group);
+        newBill.setDescription(payer.getUserName() + " thanh toán nợ cho " + payee.getUserName());
+        newBill.setTotalAmount(amountToAdd);
+        newBill.setCreatedBy(payer);
+        newBill.setIsPayment(true);
+        newBill.setStatus(com.anygroup.splitfair.enums.BillStatus.COMPLETED);
+        return billRepository.save(newBill);
+    }
+
     //Đánh dấu nợ đã được thanh toán
     @Override
     public DebtDTO markAsSettled(UUID id) {
         Debt debt = debtRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Debt not found with id: " + id));
+        
+        if (debt.getStatus() == DebtStatus.SETTLED) {
+             return debtMapper.toDTO(debt);
+        }
+
         debt.setStatus(DebtStatus.SETTLED);
+        
+        if (debt.getExpense() != null && debt.getExpense().getBill() != null && debt.getExpense().getBill().getGroup() != null) {
+             Group group = debt.getExpense().getBill().getGroup();
+             User payer = debt.getAmountFrom();
+             User payee = debt.getAmountTo();
+             BigDecimal amount = debt.getAmount();
+
+             // a. Get or Create Bill (Merged)
+             Bill bill = getOrCreateSettlementBill(group, payer, payee, amount);
+
+             // b. Create Expense
+             Expense expense = new Expense();
+             expense.setBill(bill);
+             expense.setPaidBy(payer);
+             expense.setCreatedBy(payer);
+             expense.setAmount(amount);
+             
+             String originalDesc = (debt.getExpense().getDescription() != null) 
+                 ? debt.getExpense().getDescription() 
+                 : "Khoản nợ cũ";
+             expense.setDescription("Trả nợ: " + originalDesc);
+             
+             expense.setStatus(com.anygroup.splitfair.enums.ExpenseStatus.COMPLETED);
+             expense = expenseRepository.save(expense);
+
+             // c. Create ExpenseShare
+             ExpenseShare share = new ExpenseShare();
+             share.setExpense(expense);
+             share.setUser(payee);
+             share.setShareAmount(amount);
+             share.setPercentage(BigDecimal.valueOf(100));
+             share.setStatus(com.anygroup.splitfair.enums.ShareStatus.PAID);
+             expenseShareRepository.save(share);
+        }
+
         debtRepository.save(debt);
 
-        // Gửi thông báo cho người được trả (Chủ nợ)
-        // Người trả (debt.getAmountFrom()) -> trả cho -> Chủ nợ (debt.getAmountTo())
+        // Gửi thông báo
         User payer = debt.getAmountFrom();
         User creditor = debt.getAmountTo();
-        
         String groupName = "";
         if (debt.getExpense() != null && debt.getExpense().getBill() != null && debt.getExpense().getBill().getGroup() != null) {
              groupName = " trong " + debt.getExpense().getBill().getGroup().getGroupName();
@@ -104,6 +182,70 @@ public class DebtServiceImpl implements DebtService {
         );
 
         return debtMapper.toDTO(debt);
+    }
+    
+    //thêm
+    @Override
+    @Transactional
+    public void markBatchAsSettled(List<UUID> debtIds) {
+        List<Debt> debts = debtRepository.findAllById(debtIds);
+        
+        Map<String, List<Debt>> groupedDebts = new HashMap<>();
+        
+        for (Debt debt : debts) {
+            if (debt.getStatus() == DebtStatus.UNSETTLED) {
+                String key = debt.getAmountFrom().getId() + "_" + debt.getAmountTo().getId();
+                groupedDebts.computeIfAbsent(key, k -> new ArrayList<>()).add(debt);
+            }
+        }
+
+        for (List<Debt> groupDebts : groupedDebts.values()) {
+            if (groupDebts.isEmpty()) continue;
+
+            Debt firstDebt = groupDebts.get(0);
+            User payer = firstDebt.getAmountFrom();
+            User payee = firstDebt.getAmountTo();
+            
+            BigDecimal totalAmount = BigDecimal.ZERO;
+            for (Debt debt : groupDebts) {
+                totalAmount = totalAmount.add(debt.getAmount());
+                debt.setStatus(DebtStatus.SETTLED);
+            }
+            
+            if (firstDebt.getExpense() != null && firstDebt.getExpense().getBill() != null && firstDebt.getExpense().getBill().getGroup() != null) {
+                 Group group = firstDebt.getExpense().getBill().getGroup();
+                 
+                 // a. Get or Create Bill (Merged)
+                 Bill bill = getOrCreateSettlementBill(group, payer, payee, totalAmount);
+
+                 // b. Create MULTIPLE Expenses
+                 for (Debt debt : groupDebts) {
+                     Expense expense = new Expense();
+                     expense.setBill(bill);
+                     expense.setPaidBy(payer);
+                     expense.setCreatedBy(payer);
+                     expense.setAmount(debt.getAmount());
+                     
+                     String originalDesc = (debt.getExpense() != null && debt.getExpense().getDescription() != null) 
+                         ? debt.getExpense().getDescription() 
+                         : "Khoản nợ cũ";
+                     expense.setDescription("Trả nợ: " + originalDesc);
+                     
+                     expense.setStatus(com.anygroup.splitfair.enums.ExpenseStatus.COMPLETED);
+                     expense = expenseRepository.save(expense);
+
+                     ExpenseShare share = new ExpenseShare();
+                     share.setExpense(expense);
+                     share.setUser(payee);
+                     share.setShareAmount(debt.getAmount());
+                     share.setPercentage(BigDecimal.valueOf(100));
+                     share.setStatus(com.anygroup.splitfair.enums.ShareStatus.PAID);
+                     expenseShareRepository.save(share);
+                 }
+            }
+        }
+        
+        debtRepository.saveAll(debts);
     }
 
     // Tính toán nợ khi có Expense mới
@@ -213,8 +355,6 @@ public class DebtServiceImpl implements DebtService {
         if (membersInGroup.isEmpty()) {
             return new ArrayList<>(); // Không có ai trong nhóm
         }
-        
-        int memberCount = membersInGroup.size();
         
         // Map để lưu tổng số tiền mỗi người "lẽ ra phải trả"
         Map<UUID, BigDecimal> totalOwedMap = new HashMap<>();

@@ -5,6 +5,8 @@ import com.anygroup.splitfair.model.Debt;
 import com.anygroup.splitfair.model.Expense;
 import com.anygroup.splitfair.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -29,4 +31,12 @@ public interface DebtRepository extends JpaRepository<Debt, UUID> {
 
     // Xóa các khoản nợ liên quan đến một expense cụ thể
     void deleteByExpense_Id(UUID expenseId);
+    @Query("SELECT d FROM Debt d WHERE d.amountFrom = :fromUser AND d.amountTo = :toUser " +
+           "AND d.expense.bill.group.id = :groupId AND d.status = 'UNSETTLED' " +
+           "ORDER BY d.expense.createdTime ASC")
+    List<Debt> findUnsettledDebts(
+            @Param("fromUser") User fromUser, 
+            @Param("toUser") User toUser, 
+            @Param("groupId") UUID groupId
+    );
 }

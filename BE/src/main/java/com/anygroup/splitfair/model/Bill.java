@@ -46,9 +46,16 @@ public class Bill {
     @Builder.Default
     private Instant createdTime = Instant.now();
 
+    @Builder.Default
+    private Boolean isPayment = false;
+
     @ManyToOne
     @JoinColumn(name = "created_by")
     private User createdBy;
+
+    // ✅ Thêm quan hệ OneToMany với Expense để kích hoạt Cascade Delete
+    @OneToMany(mappedBy = "bill", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<Expense> expenses = new java.util.ArrayList<>();
 
     @PrePersist
     public void prePersist() {

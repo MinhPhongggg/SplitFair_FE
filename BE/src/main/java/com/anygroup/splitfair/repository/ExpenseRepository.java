@@ -23,10 +23,11 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> {
     // Lấy các expense mà user đã thanh toán
     List<Expense> findByPaidBy(User paidBy);
 
-    // Thống kê tổng số tiền mỗi user  trong một group
+    // Thống kê tổng số tiền mỗi user  trong một group (ĐÃ ÁP DỤNG BỘ LỌC ẨN PAYMENT)
     @Query("SELECT new com.anygroup.splitfair.dto.PaymentStatDTO(e.paidBy.userName, SUM(e.amount)) " +
            "FROM Expense e " +
            "WHERE e.bill.group.id = :groupId " +
+           "AND (e.bill.isPayment IS NULL OR e.bill.isPayment = false) " +
            "GROUP BY e.paidBy.userName")
     List<PaymentStatDTO> getPaymentStatsByGroup(UUID groupId);
 
