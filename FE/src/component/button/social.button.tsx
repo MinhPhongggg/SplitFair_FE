@@ -28,22 +28,33 @@ const SocialButton = ({ title }: IProps) => {
   const { showToast } = useToast();
   const { setAppState } = useCurrentApp();
 
+  // @/component/button/social.button.tsx
   const handleGoogleLogin = async () => {
     try {
-      const res = await loginWithGoogle(); // BE trả { token, user }
+      const res = await loginWithGoogle(); // Dữ liệu trả về là AuthResponse
 
-      await AsyncStorage.setItem("token", res.token);
+      if (res && res.token) {
+        // 1. Lưu JWT của hệ thống vào máy
+        await AsyncStorage.setItem("token", res.token);
 
-      setAppState({
-        token: res.token,
-        ...res.user,
-      });
+        // 2. Cập nhật trạng thái App (Khớp với AuthResponse của BE)
+        setAppState({
+          token: res.token,
+          userId: res.userId,
+          userName: res.userName,
+          email: res.email,
+          avatar: res.avatar,
+          role: res.role,
+        });
 
-      showToast("success", "Google", "Đăng nhập thành công");
-      router.replace("/(tabs)");
-    } catch (error) {
-      console.log(error);
-      showToast("error", "Lỗi", "Google login thất bại");
+        showToast("success", "Thành công", `Chào mừng ${res.userName}!`);
+
+        // 3. Điều hướng thẳng vào Tabs
+        router.replace("/(tabs)");
+      }
+    } catch (error: any) {
+      console.error("Google Login Error:", error);
+      showToast("error", "Lỗi", "Đăng nhập thất bại, vui lòng thử lại");
     }
   };
 

@@ -1,13 +1,13 @@
-// splitapp-fe/src/context/app.context.tsx
 import { createContext, useContext, useState } from "react";
 
 export interface IUserAuth {
   token: string;
-  userName: string; // Tên (name) từ app cũ
+  userId: string;
+  userName: string;
+  email: string;
   role: string;
-  email?: string;
-  userId?: string | number; // Thêm ID người dùng
-  avatar?: string; // Thêm avatar
+  avatar?: string;
+  status?: string;
 }
 
 interface AppContextType {

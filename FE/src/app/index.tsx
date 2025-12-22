@@ -21,26 +21,22 @@ const RootPage = () => {
     const bootstrapAsync = async () => {
       try {
         const token = await AsyncStorage.getItem("token");
-
         if (!token) {
           router.replace("/(auth)/welcome");
           return;
         }
 
+        // Gọi API lấy thông tin cá nhân dựa trên token đã lưu
         const res = await getAccountAPI();
 
-        if (res?.email || res?.userName) {
-          setAppState({
-            ...res,
-            token: res.token || token,
-          });
-
+        if (res) {
+          setAppState({ ...res, token });
           router.replace("/(tabs)");
         } else {
           router.replace("/(auth)/welcome");
         }
       } catch (error) {
-        console.warn("Auth bootstrap error:", error);
+        await AsyncStorage.removeItem("token");
         router.replace("/(auth)/welcome");
       } finally {
         await SplashScreen.hideAsync();
