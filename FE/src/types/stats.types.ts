@@ -9,3 +9,10 @@ export interface Balance {
   userName: string;
   netAmount: string; // Âm là nợ, dương là được trả
 }
+
+export interface PersonalExpenseStat {
+  userId: string;
+  totalAmount: number;
+  from: string;
+  to: string;
+}

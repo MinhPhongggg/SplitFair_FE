@@ -33,8 +33,11 @@ export const scanReceipt = async (imageUri: string): Promise<string | null> => {
     const data = await response.json();
 
     if (data.IsErroredOnProcessing) {
-      console.error("OCR Error:", data.ErrorMessage);
-      return null;
+      const errorMessage = Array.isArray(data.ErrorMessage)
+        ? data.ErrorMessage.join(", ")
+        : data.ErrorMessage;
+      console.error("OCR Error:", errorMessage);
+      throw new Error(errorMessage || "OCR processing failed");
     }
 
     if (data.ParsedResults && data.ParsedResults.length > 0) {
@@ -46,7 +49,7 @@ export const scanReceipt = async (imageUri: string): Promise<string | null> => {
     return null;
   } catch (error) {
     console.error("Scan failed:", error);
-    return null;
+    throw error;
   }
 };
 
