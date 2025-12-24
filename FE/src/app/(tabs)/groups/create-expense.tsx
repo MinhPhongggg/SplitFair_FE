@@ -57,8 +57,8 @@ const CreateExpenseScreen = () => {
       } else {
         Alert.alert("Thất bại", "Không tìm thấy số tiền trong hóa đơn");
       }
-    } catch (error) {
-      Alert.alert("Lỗi", "Có lỗi xảy ra khi quét hóa đơn");
+    } catch (error: any) {
+      Alert.alert("Lỗi", error.message || "Có lỗi xảy ra khi quét hóa đơn");
     } finally {
       setIsScanning(false);
     }

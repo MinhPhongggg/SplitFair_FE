@@ -6,6 +6,7 @@ import {
   Text,
   TextStyle,
   View,
+  ViewStyle,
 } from "react-native";
 import { ReactNode } from "react";
 import { APP_COLOR } from "@/utils/constant";
@@ -27,8 +28,8 @@ interface IProps {
   onPress: () => void;
   icon?: ReactNode;
   textStyle?: StyleProp<TextStyle>;
-  buttonStyle?: StyleProp<TextStyle>;
-  pressStyle?: StyleProp<TextStyle>;
+  buttonStyle?: StyleProp<ViewStyle>;
+  pressStyle?: StyleProp<ViewStyle>;
   loading?: boolean;
 }
 const ShareButton = (props: IProps) => {
