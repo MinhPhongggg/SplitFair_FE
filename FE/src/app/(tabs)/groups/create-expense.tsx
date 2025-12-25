@@ -33,7 +33,6 @@ const CreateExpenseScreen = () => {
     groupId: string;
   }>();
 
-  // Sử dụng custom hook
   const {
     members,
     isLoadingMembers,
@@ -44,6 +43,7 @@ const CreateExpenseScreen = () => {
     calc,
     helpers,
   } = useExpenseCreation(groupId, billId);
+
   const [showPayerModal, setShowPayerModal] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
 
@@ -72,16 +72,17 @@ const CreateExpenseScreen = () => {
     try {
       const amount = await scanReceipt(uri);
       if (amount) {
-        setters.setAmount(amount);
-        Alert.alert(
-          "Thành công",
-          `Đã quét được số tiền: ${parseInt(amount).toLocaleString("vi-VN")}đ`
-        );
+        // FIX: Định dạng số thô từ OCR (vd: "500000") thành số có dấu chấm ("500.000")
+        const formattedAmount = calc.formatNumber(amount);
+        setters.setAmount(formattedAmount);
+
+        Alert.alert("Thành công", `Đã quét được số tiền: ${formattedAmount}đ`);
       } else {
         Alert.alert("Thất bại", "Không tìm thấy số tiền trong hóa đơn");
       }
     } catch (error: any) {
-      Alert.alert("Lỗi", error.message || "Có lỗi xảy ra khi quét hóa đơn");
+      console.error("OCR Error:", error);
+      Alert.alert("Lỗi", "Không thể kết nối tới máy chủ OCR");
     } finally {
       setIsScanning(false);
     }
@@ -105,7 +106,6 @@ const CreateExpenseScreen = () => {
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#F2F2F7" />
 
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -125,7 +125,6 @@ const CreateExpenseScreen = () => {
           style={{ flex: 1 }}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* Description */}
           <View style={styles.descriptionContainer}>
             <Ionicons
               name="document-text-outline"
@@ -142,7 +141,6 @@ const CreateExpenseScreen = () => {
             />
           </View>
 
-          {/* Payer & Amount */}
           <PayerAmountSection
             payerName={
               payerMember ? helpers.getMemberName(payerMember) : "Chọn người"
@@ -162,15 +160,13 @@ const CreateExpenseScreen = () => {
             />
           )}
 
-          {/* Split Method */}
           <SplitMethodTabs
             current={form.splitMethod}
             onChange={logic.changeMethod}
           />
 
-          {/* Split List */}
           <SplitList
-            inputs={calc.calculatedShares} // Dùng mảng đã tính toán để hiển thị số tiền luôn
+            inputs={calc.calculatedShares}
             splitMethod={form.splitMethod}
             onToggle={logic.toggleCheck}
             onInput={logic.updateInput}
@@ -181,7 +177,6 @@ const CreateExpenseScreen = () => {
           />
         </ScrollView>
 
-        {/* Footer */}
         <View style={styles.fixedFooter}>
           <View style={styles.totalInfoContainer}>
             <Text style={styles.totalLabelFooter}>Tổng đã chia:</Text>
@@ -198,7 +193,8 @@ const CreateExpenseScreen = () => {
             <Text style={styles.errorTextFooter}>
               Còn thiếu:{" "}
               {(
-                parseFloat(form.amount || "0") - calc.totalCalculated
+                parseFloat(calc.unformatNumber(form.amount) || "0") -
+                calc.totalCalculated
               ).toLocaleString("vi-VN")}
               đ
             </Text>
@@ -237,6 +233,7 @@ const CreateExpenseScreen = () => {
   );
 };
 
+// ... Styles giữ nguyên như file cũ của bạn
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
@@ -268,10 +265,6 @@ const styles = StyleSheet.create({
     borderTopColor: "#eee",
     padding: 20,
     paddingBottom: Platform.OS === "ios" ? 30 : 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
     elevation: 10,
   },
   totalInfoContainer: {

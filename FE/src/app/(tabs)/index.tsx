@@ -106,7 +106,7 @@ const HomeTab = () => {
   const handleGroupSelect = (groupId: string) => {
     setShowGroupModal(false);
     router.push({
-      pathname: "/(tabs)/groups/create-expense",
+      pathname: "/(tabs)/groups/create-bill",
       params: { groupId },
     });
   };
