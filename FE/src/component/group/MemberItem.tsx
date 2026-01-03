@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { APP_COLOR } from '@/utils/constant';
 import Avatar from '@/component/Avatar';
@@ -7,29 +7,42 @@ import { GroupMember } from '@/types/group.types';
 
 interface Props {
   item: GroupMember;
+  currentUserId?: string;
+  isLeader?: boolean;
+  onRemove?: (member: GroupMember) => void;
 }
 
-export const MemberItem = ({ item }: Props) => {
+export const MemberItem = ({ item, currentUserId, isLeader, onRemove }: Props) => {
   // Logic xử lý hiển thị tên/avatar/role y hệt file gốc
   const name = item.userName || item.user?.userName || 'Thành viên';
   const avatar = item.user?.avatar; 
   const role = item.roleName || item.role?.name || 'MEMBER';
-  const isLeader = role === 'LEADER';
+  const isItemLeader = role === 'LEADER';
+  const isMe = item.userId === currentUserId || item.user?.id === currentUserId;
+
+  const handlePressMore = () => {
+    if (isLeader && !isItemLeader && !isMe) {
+        // Gọi callback để parent xử lý (hiện modal)
+        onRemove && onRemove(item);
+    }
+  };
 
   return (
     <View style={styles.memberCard}>
       <Avatar name={name} avatar={avatar} />
       <View style={styles.memberInfo}>
         <Text style={styles.memberName}>{name}</Text>
-        <View style={[styles.roleBadge, isLeader ? styles.roleLeader : styles.roleMember]}>
-          <Text style={[styles.roleText, isLeader ? styles.roleTextLeader : styles.roleTextMember]}>
-            {isLeader ? 'Trưởng nhóm' : 'Thành viên'}
+        <View style={[styles.roleBadge, isItemLeader ? styles.roleLeader : styles.roleMember]}>
+          <Text style={[styles.roleText, isItemLeader ? styles.roleTextLeader : styles.roleTextMember]}>
+            {isItemLeader ? 'Trưởng nhóm' : 'Thành viên'}
           </Text>
         </View>
       </View>
-      <TouchableOpacity style={styles.moreBtn}>
-        <Ionicons name="ellipsis-horizontal" size={20} color="#ccc" />
-      </TouchableOpacity>
+      {(isLeader && !isItemLeader && !isMe) && (
+        <TouchableOpacity style={styles.moreBtn} onPress={handlePressMore}>
+            <Ionicons name="ellipsis-horizontal" size={20} color="#ccc" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 };

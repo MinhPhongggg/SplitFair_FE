@@ -32,8 +32,19 @@ export const SplitList = ({ inputs, splitMethod, onToggle, onInput, getAvatar }:
               <View style={{ alignItems: 'flex-end' }}>
                 {isEditable && (
                   <View style={styles.inputWrap}>
-                    <TextInput style={styles.input} value={item.value} onChangeText={t => onInput(item.userId, t)} keyboardType="numeric" placeholder="0" onFocus={e => e.stopPropagation()} />
+                    <TextInput
+                      style={styles.input}
+                      value={item.isManual ? item.value : ''}
+                      onChangeText={(t) => onInput(item.userId, t)}
+                      keyboardType="numeric"
+                      placeholder={splitMethod === 'SHARES' ? '1' : '0'}
+                      placeholderTextColor="#999"
+                      selectTextOnFocus={true}
+                      selectionColor={APP_COLOR.ORANGE}
+                      onFocus={(e) => e.stopPropagation()}
+                    />
                     {splitMethod === 'PERCENTAGE' && <Text style={styles.unit}>%</Text>}
+                    {splitMethod === 'SHARES' && <Text style={styles.unit}>phần</Text>}
                   </View>
                 )}
                 <Text style={styles.amount}>{item.calculatedAmount?.toLocaleString('vi-VN')}đ</Text>

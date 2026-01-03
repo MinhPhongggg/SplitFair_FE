@@ -52,8 +52,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 15,
-    zIndex: 10,
-    elevation: 2,
   },
   leftContainer: {
     flexDirection: 'row',
@@ -71,7 +69,6 @@ const styles = StyleSheet.create({
   },
   rightContainer: {
     marginLeft: 10,
-    zIndex: 11,
   },
 });
 

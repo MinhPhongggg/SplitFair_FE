@@ -270,6 +270,7 @@ const GroupStatsTab = ({ route }: any) => {
             title={confirmModal.title}
             message={confirmModal.message}
             type={confirmModal.type}
+            variant="material"
         />
       </View>
     </KeyboardAvoidingView>

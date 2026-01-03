@@ -10,7 +10,6 @@ import {
   StatusBar,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -26,6 +25,7 @@ import { PayerAmountSection } from "@/component/expense/PayerAmountSection";
 import { SplitMethodTabs } from "@/component/expense/SplitMethodTabs";
 import { SplitList } from "@/component/expense/SplitList";
 import { SelectionModal } from "@/component/expense/SelectionModal";
+import ConfirmModal from "@/component/ConfirmModal";
 
 const CreateExpenseScreen = () => {
   const { billId, groupId } = useLocalSearchParams<{
@@ -46,25 +46,30 @@ const CreateExpenseScreen = () => {
 
   const [showPayerModal, setShowPayerModal] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [showScanOptions, setShowScanOptions] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info" as "info" | "danger" | "warning",
+    onConfirm: () => {},
+    hideCancel: false,
+    confirmText: "OK",
+  });
 
-  const handleScan = async () => {
-    Alert.alert("Quét hóa đơn", "Chọn phương thức", [
-      {
-        text: "Chụp ảnh",
-        onPress: async () => {
-          const uri = await takePhoto();
-          if (uri) processImage(uri);
-        },
-      },
-      {
-        text: "Chọn từ thư viện",
-        onPress: async () => {
-          const uri = await pickImage();
-          if (uri) processImage(uri);
-        },
-      },
-      { text: "Hủy", style: "cancel" },
-    ]);
+  const handleScan = () => {
+    setShowScanOptions(true);
+  };
+
+  const handleScanOption = async (value: string) => {
+    setShowScanOptions(false);
+    if (value === "camera") {
+      const uri = await takePhoto();
+      if (uri) processImage(uri);
+    } else if (value === "library") {
+      const uri = await pickImage();
+      if (uri) processImage(uri);
+    }
   };
 
   const processImage = async (uri: string) => {
@@ -76,13 +81,40 @@ const CreateExpenseScreen = () => {
         const formattedAmount = calc.formatNumber(amount);
         setters.setAmount(formattedAmount);
 
-        Alert.alert("Thành công", `Đã quét được số tiền: ${formattedAmount}đ`);
+        setConfirmModal({
+          visible: true,
+          title: "Thành công",
+          message: `Đã quét được số tiền: ${formattedAmount}đ`,
+          type: "info",
+          onConfirm: () =>
+            setConfirmModal((prev) => ({ ...prev, visible: false })),
+          hideCancel: true,
+          confirmText: "OK",
+        });
       } else {
-        Alert.alert("Thất bại", "Không tìm thấy số tiền trong hóa đơn");
+        setConfirmModal({
+          visible: true,
+          title: "Thất bại",
+          message: "Không tìm thấy số tiền trong hóa đơn",
+          type: "warning",
+          onConfirm: () =>
+            setConfirmModal((prev) => ({ ...prev, visible: false })),
+          hideCancel: true,
+          confirmText: "OK",
+        });
       }
     } catch (error: any) {
       console.error("OCR Error:", error);
-      Alert.alert("Lỗi", "Không thể kết nối tới máy chủ OCR");
+      setConfirmModal({
+        visible: true,
+        title: "Lỗi",
+        message: "Không thể kết nối tới máy chủ OCR",
+        type: "danger",
+        onConfirm: () =>
+          setConfirmModal((prev) => ({ ...prev, visible: false })),
+        hideCancel: true,
+        confirmText: "OK",
+      });
     } finally {
       setIsScanning(false);
     }
@@ -228,6 +260,29 @@ const CreateExpenseScreen = () => {
         }
         onSelect={setters.setPaidBy}
         selectedValue={form.paidBy}
+      />
+
+      <SelectionModal
+        visible={showScanOptions}
+        onClose={() => setShowScanOptions(false)}
+        title="Chọn nguồn ảnh"
+        options={[
+          { label: "Chụp ảnh hóa đơn", value: "camera" },
+          { label: "Chọn từ thư viện", value: "library" },
+        ]}
+        onSelect={handleScanOption}
+        selectedValue=""
+      />
+
+      <ConfirmModal
+        visible={confirmModal.visible}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, visible: false }))}
+        onConfirm={confirmModal.onConfirm}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        type={confirmModal.type}
+        hideCancel={confirmModal.hideCancel}
+        confirmText={confirmModal.confirmText}
       />
     </SafeAreaView>
   );

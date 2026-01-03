@@ -12,13 +12,10 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useNavigation } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import auth from "@react-native-firebase/auth";
-import { GoogleSignin } from "@react-native-google-signin/google-signin";
 
 import ShareInput from "@/component/input/share.input";
 import { useCurrentApp } from "@/context/app.context";
@@ -196,38 +193,13 @@ const AccountPage = () => {
 
   const performLogout = async () => {
     try {
-      const user = auth().currentUser;
-
-      // 1. Logout Firebase (CHỈ khi có user)
-      if (user) {
-        const isGoogleUser = user.providerData.some(
-          (provider) => provider.providerId === "google.com"
-        );
-
-        await auth().signOut();
-
-        // 2. Nếu là Google user → logout Google
-        if (isGoogleUser) {
-          try {
-            await GoogleSignin.signOut();
-            await GoogleSignin.revokeAccess();
-          } catch (googleError) {
-            console.log("Google logout error (ignored):", googleError);
-          }
-        }
-      }
-
-      // 3. Xóa token backend (LUÔN LUÔN chạy)
       await AsyncStorage.removeItem("access_token");
-
-      // 4. Reset app
       setAppState(null);
+      showToast("success", "Đăng xuất", "Hẹn gặp lại bạn sớm!");
       router.replace("/(auth)/login");
-
-      showToast("success", "Đăng xuất", "Hẹn gặp lại bạn 👋");
     } catch (error) {
-      console.log("Logout error:", error);
-      showToast("error", "Lỗi", "Không thể đăng xuất");
+      console.log("Logout error: ", error);
+      showToast("error", "Lỗi", "Không thể đăng xuất lúc này.");
     }
   };
 
@@ -325,10 +297,9 @@ const AccountPage = () => {
 
   // --- Render Menu Mode ---
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Profile Header */}
-        <View style={styles.profileHeader}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* Profile Header */}
+      <View style={styles.profileHeader}>
         <View style={{ marginRight: 15 }}>
           <Avatar
             name={appState?.userName || "User"}
@@ -354,7 +325,7 @@ const AccountPage = () => {
 
       <View style={{ height: 20 }} />
 
-      <Section title="Cài đặt">
+      <Section title="Thông tin ">
         <SettingItem
           icon="language-outline"
           label="Ngôn ngữ"
@@ -397,6 +368,7 @@ const AccountPage = () => {
         confirmText="Đăng xuất"
         type="danger"
         icon="log-out-outline"
+        variant="material"
       />
 
       {/* Change Password Modal */}
@@ -453,8 +425,7 @@ const AccountPage = () => {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-      </ScrollView>
-    </SafeAreaView>
+    </ScrollView>
   );
 };
 
@@ -559,7 +530,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 15,
     paddingVertical: 15,
-    paddingTop: 50,
+
     borderBottomWidth: 1,
     borderBottomColor: "#EEE",
   },

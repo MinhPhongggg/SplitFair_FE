@@ -13,3 +13,11 @@ export interface Bill {
   createdBy: string;
   isPayment?: boolean;
 }
+
+export interface BillItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  assignedTo: string[]; // List of user IDs
+}

@@ -124,7 +124,15 @@ const StatisticsScreen = () => {
         // --- 1. Calculate Share (Thực chi) ---
         const validShares = userShares.filter((s) => expensesMap[s.expenseId]);
         const filteredShares = validShares.filter((s) => {
-          const eDate = parseISO(expensesMap[s.expenseId].createdTime);
+          const expense = expensesMap[s.expenseId];
+          const eDate = parseISO(expense.createdTime);
+
+          // FIX: Loại bỏ các khoản trả nợ khỏi thống kê chi tiêu (Share)
+          // Nếu là người nhận tiền trả nợ, không nên tính là "Chi tiêu"
+          if (expense.description.toLowerCase().startsWith("trả nợ")) {
+            return false;
+          }
+
           return eDate >= start && eDate <= end;
         });
         shareTotal = filteredShares.reduce((sum, s) => sum + s.shareAmount, 0);

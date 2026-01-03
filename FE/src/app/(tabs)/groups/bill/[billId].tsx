@@ -309,6 +309,7 @@ const BillDetailScreen = () => {
         message={confirmModal.message}
         type={confirmModal.type}
         confirmText={confirmModal.confirmText}
+        variant="material"
       />
     </SafeAreaView>
   );

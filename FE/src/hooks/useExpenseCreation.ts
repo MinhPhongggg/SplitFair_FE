@@ -145,16 +145,18 @@ export const useExpenseCreation = (groupId: string, billId: string) => {
       let processedVal = cleanVal;
 
       // Fix: Nếu chia theo số tiền (EXACT), hiển thị dấu chấm ngay khi gõ
-      if (splitMethod === "EXACT") {
+      if (splitMethod === "EXACT" && cleanVal !== "") {
         processedVal = formatNumber(cleanVal);
       }
 
+      // Khi user đã chạm vào input thì đánh dấu isManual = true
+      // Để tránh bị tự động điền lại khi user xóa hết
       const nextState = prev.map((i) =>
         i.userId === uid
           ? {
               ...i,
               value: processedVal,
-              isManual: processedVal !== "" && processedVal !== "0",
+              isManual: true,
             }
           : i
       );
@@ -226,6 +228,25 @@ export const useExpenseCreation = (groupId: string, billId: string) => {
     );
   };
 
+  // New function to batch update inputs (useful for itemized splitting)
+  const batchUpdateInputs = (updates: Record<string, string>) => {
+    setSplitInputs((prev) =>
+      prev.map((i) => {
+        if (updates[i.userId] !== undefined) {
+          const val = updates[i.userId];
+          // Format if EXACT method
+          const formattedVal = splitMethod === "EXACT" ? formatNumber(val) : val;
+          return {
+            ...i,
+            value: formattedVal,
+            isManual: true, // Mark as manual so auto-calc doesn't overwrite
+          };
+        }
+        return i;
+      })
+    );
+  };
+
   const submit = () => {
     const participating = splitInputs.filter((m) => m.isChecked);
     if (participating.length === 0)
@@ -292,7 +313,7 @@ export const useExpenseCreation = (groupId: string, billId: string) => {
     isPending: isCreating || isSaving,
     form: { description, amount, paidBy, splitMethod, splitInputs },
     setters: { setDescription, setAmount, setPaidBy },
-    logic: { toggleCheck, updateInput, changeMethod, submit },
+    logic: { toggleCheck, updateInput, changeMethod, submit, batchUpdateInputs },
     calc: {
       calculatedShares,
       totalCalculated,

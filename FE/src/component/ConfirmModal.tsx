@@ -8,11 +8,15 @@ interface ConfirmModalProps {
   onClose: () => void;
   onConfirm: () => void;
   title: string;
-  message: string;
+  message: string | React.ReactNode;
+  subMessage?: string;
   confirmText?: string;
   cancelText?: string;
   type?: 'danger' | 'info' | 'warning';
   icon?: keyof typeof Ionicons.glyphMap; // Cho phép custom icon
+  hideIcon?: boolean;
+  hideCancel?: boolean;
+  variant?: 'default' | 'material';
 }
 
 const ConfirmModal = ({
@@ -21,14 +25,63 @@ const ConfirmModal = ({
   onConfirm,
   title,
   message,
+  subMessage,
   confirmText = 'Đồng ý',
   cancelText = 'Hủy',
   type = 'info',
-  icon
+  icon,
+  hideIcon = false,
+  hideCancel = false,
+  variant = 'default',
 }: ConfirmModalProps) => {
   // Xác định icon mặc định dựa trên type nếu không có icon truyền vào
   const defaultIcon = type === 'danger' ? "trash-outline" : "information-circle-outline";
   const iconName = icon || defaultIcon;
+
+  if (variant === 'material') {
+    return (
+      <Modal
+        transparent
+        visible={visible}
+        animationType="fade"
+        onRequestClose={onClose}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.materialContainer}>
+            <View style={styles.materialContent}>
+              <Text style={styles.materialTitle}>{title}</Text>
+              {typeof message === 'string' ? (
+                 <Text style={styles.materialMessage}>{message}</Text>
+              ) : (
+                 <Text style={styles.materialMessage}>{message}</Text>
+              )}
+              {subMessage && <Text style={styles.materialSubMessage}>{subMessage}</Text>}
+            </View>
+            <View style={styles.materialButtonRow}>
+              {!hideCancel && (
+                <TouchableOpacity 
+                  style={styles.materialButton} 
+                  onPress={onClose}
+                >
+                  <Text style={styles.materialCancelText}>{cancelText}</Text>
+                </TouchableOpacity>
+              )}
+              
+              <TouchableOpacity 
+                style={styles.materialButton} 
+                onPress={() => {
+                  onClose();
+                  setTimeout(onConfirm, 200);
+                }}
+              >
+                <Text style={[styles.materialConfirmText, { color: APP_COLOR.ORANGE }]}>{confirmText}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
   return (
     <Modal
@@ -40,21 +93,25 @@ const ConfirmModal = ({
       <View style={styles.overlay}>
         <View style={styles.container}>
           {/* Icon Header */}
-          <View style={[styles.iconContainer, type === 'danger' ? styles.iconDanger : styles.iconInfo]}>
-            <Ionicons 
-              name={iconName} 
-              size={36} 
-              color={type === 'danger' ? "#FF3B30" : APP_COLOR.ORANGE} 
-            />
-          </View>
+          {!hideIcon && (
+            <View style={[styles.iconContainer, type === 'danger' ? styles.iconDanger : styles.iconInfo]}>
+                <Ionicons 
+                name={iconName} 
+                size={36} 
+                color={type === 'danger' ? "#FF3B30" : APP_COLOR.ORANGE} 
+                />
+            </View>
+          )}
 
           <Text style={styles.title}>{title}</Text>
-          <Text style={styles.message}>{message}</Text>
+          <Text style={styles.message}>{message as string}</Text>
 
           <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.cancelText}>{cancelText}</Text>
-            </TouchableOpacity>
+            {!hideCancel && (
+              <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+                <Text style={styles.cancelText}>{cancelText}</Text>
+              </TouchableOpacity>
+            )}
             
             <TouchableOpacity 
               style={[styles.confirmButton, type === 'danger' ? styles.confirmDanger : styles.confirmInfo]} 
@@ -80,6 +137,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  // ... Existing styles ...
   container: {
     backgroundColor: 'white',
     borderRadius: 24,
@@ -93,6 +151,62 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
+  // Material Styles
+  materialContainer: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 320,
+    overflow: 'hidden',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  materialContent: {
+    padding: 24,
+  },
+  materialTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827', // Gray-900
+    marginBottom: 8,
+  },
+  materialMessage: {
+    fontSize: 16,
+    color: '#4B5563', // Gray-600
+    lineHeight: 24,
+  },
+  materialSubMessage: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#9CA3AF', // Gray-400
+  },
+  materialButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    gap: 12,
+  },
+  materialButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  materialCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4B5563', // Gray-600
+  },
+  materialConfirmText: {
+    fontSize: 14,
+    fontWeight: '600',
+    // Color set inline
+  },
+
+  // Existing styles continued...
   iconContainer: {
     width: 64,
     height: 64,

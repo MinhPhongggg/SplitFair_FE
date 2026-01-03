@@ -64,7 +64,7 @@ const ExpenseDetailScreen = () => {
     setConfirmModal({
       visible: true,
       title: "Xác nhận xóa",
-      message: "Bạn có chắc chắn muốn xóa khoản chi tiêu này không? Hành động này sẽ hoàn tác các thay đổi về số dư nợ.",
+      message: "Bạn có chắc chắn muốn xóa khoản chi tiêu này không?",
       type: 'danger',
       confirmText: "Xóa",
       onConfirm: () => {
@@ -217,8 +217,10 @@ const ExpenseDetailScreen = () => {
         onConfirm={confirmModal.onConfirm}
         title={confirmModal.title}
         message={confirmModal.message}
+        subMessage="Hành động này sẽ hoàn tác các thay đổi về số dư nợ."
         type={confirmModal.type}
         confirmText={confirmModal.confirmText}
+        variant="material"
       />
     </SafeAreaView>
   );

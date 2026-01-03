@@ -1,23 +1,38 @@
 import React, { useState } from 'react';
 import { View, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Text } from 'react-native';
-import { useGetGroupMembers, useUserSearch, useAddMember } from '@/api/hooks';
+import { useGetGroupMembers, useUserSearch, useAddMember, useGetGroupById, useRemoveMember, useGetGroupBalances } from '@/api/hooks';
 import { APP_COLOR } from '@/utils/constant';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { User } from '@/types/user.types';
 import { useToast } from '@/context/toast.context';
+import { useCurrentApp } from '@/context/app.context';
+import { GroupMember } from '@/types/group.types';
 // Components
 import { MemberItem } from '@/component/group/MemberItem';
 import { AddMemberModal } from '@/component/group/AddMemberModal';
+import ConfirmModal from '@/component/ConfirmModal';
 
 const GroupMembersTab = ({ route }: any) => {
   const { groupId } = route.params;
+  const { appState } = useCurrentApp();
+  const currentUserId = appState?.userId;
+
   const { data: members, isLoading, refetch } = useGetGroupMembers(groupId);
+  const { data: group } = useGetGroupById(groupId);
+  const { data: balances } = useGetGroupBalances(groupId);
+  const { mutate: removeMember } = useRemoveMember(groupId);
+
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<GroupMember | null>(null);
+
   const [query, setQuery] = useState('');
   const { showToast } = useToast();
   
   const { data: users, isLoading: isSearching } = useUserSearch(query);
   const { mutate: addMember, isPending: isAdding } = useAddMember(groupId as string);
+
+  const isLeader = group?.createdBy === currentUserId;
 
   const handleAdd = (user: User) => {
     const isExist = members?.some(m => m.userId === user.id || m.user?.id === user.id);
@@ -34,6 +49,36 @@ const GroupMembersTab = ({ route }: any) => {
     });
   };
 
+  const handleRemoveRequest = (member: GroupMember) => {
+      // Check debts
+      const memberBalance = balances?.find(b => b.userId === member.userId || b.userId === member.user?.id);
+      const amount = parseFloat(memberBalance?.netAmount || "0");
+      
+      if (Math.abs(amount) > 100) {
+          showToast("error", "Không thể xóa", "Thành viên này vẫn còn dư nợ chưa thanh toán.");
+          return;
+      }
+      
+      setSelectedMember(member);
+      setShowConfirmDelete(true);
+  };
+
+  const confirmDeleteMember = () => {
+      if (!selectedMember) return;
+      
+      removeMember({ memberId: selectedMember.id }, {
+          onSuccess: () => {
+              showToast("success", "Thành công", "Đã xóa thành viên khỏi nhóm.");
+              refetch();
+              setShowConfirmDelete(false);
+              setSelectedMember(null);
+          },
+          onError: (err) => {
+              showToast("error", "Lỗi", err.message || "Không thể xóa thành viên");
+          }
+      });
+  };
+
   if (isLoading) return <ActivityIndicator size="large" color={APP_COLOR.ORANGE} style={styles.center} />;
 
   return (
@@ -45,7 +90,14 @@ const GroupMembersTab = ({ route }: any) => {
       <FlatList
         data={members || []}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <MemberItem item={item} />}
+        renderItem={({ item }) => (
+            <MemberItem 
+                item={item} 
+                currentUserId={currentUserId}
+                isLeader={isLeader}
+                onRemove={handleRemoveRequest}
+            />
+        )}
         ListEmptyComponent={<View style={styles.center}><Text style={styles.emptyText}>Chưa có thành viên nào.</Text></View>}
         onRefresh={refetch} refreshing={isLoading}
         contentContainerStyle={styles.listContent}
@@ -60,6 +112,22 @@ const GroupMembersTab = ({ route }: any) => {
         query={query} setQuery={setQuery} users={users} isSearching={isSearching}
         onAddMember={handleAdd} isAdding={isAdding} groupId={groupId}
         showToast={(type: any, title: string, msg: string) => showToast(type, title, msg)}
+      />
+
+      <ConfirmModal
+        visible={showConfirmDelete}
+        onClose={() => setShowConfirmDelete(false)}
+        onConfirm={confirmDeleteMember}
+        title="Tùy chọn thành viên"
+        message={
+            <Text>
+                Bạn có muốn xóa <Text style={{fontWeight: 'bold', color: '#111827'}}>{selectedMember?.userName || selectedMember?.user?.userName}</Text> khỏi nhóm?
+            </Text>
+        }
+        subMessage="Hành động này không thể hoàn tác."
+        confirmText="XÓA KHỎI NHÓM"
+        cancelText="HỦY"
+        variant="material"
       />
     </View>
   );
