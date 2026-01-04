@@ -13,6 +13,17 @@ export const updateUser = (userId: string, dto: Partial<User>): Promise<User> =>
   return axios.put(`/api/users/${userId}`, dto);
 };
 
+// Cập nhật thông tin ngân hàng
+export interface BankInfoRequest {
+  bankCode: string;
+  bankAccountNo: string;
+  bankAccountName: string;
+}
+
+export const updateMyBankInfo = (request: BankInfoRequest): Promise<void> => {
+  return axios.post('/api/users/me/bank-info', request);
+};
+
 
 export const uploadAvatarAPI = async (userId: string, formData: FormData): Promise<User> => {
   const response = await axios.post(`/api/users/${userId}/avatar`, formData, {

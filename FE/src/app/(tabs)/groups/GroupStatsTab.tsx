@@ -26,6 +26,7 @@ import { DebtSuggestionItem } from '@/component/group/DebtSuggestionItem';
 import { ExpenseItem } from '@/component/group/ExpenseItem';
 import { StatsFilterModal } from '@/component/group/StatsFilterModal';
 import { ActionModal } from '@/component/group/ActionModal';
+import Avatar from '@/component/Avatar';
 
 const PIE_COLORS = ['#007AFF', '#FFCC00', '#34C759', '#FF3B30', '#8E8E93'];
 type SortOption = 'DATE_DESC' | 'DATE_ASC' | 'AMOUNT_DESC' | 'AMOUNT_ASC';
@@ -43,6 +44,7 @@ const GroupStatsTab = ({ route }: any) => {
   const [sortOption, setSortOption] = useState<SortOption>('DATE_DESC');
   const [confirmModal, setConfirmModal] = useState({ visible: false, title: '', message: '', onConfirm: () => {}, type: 'info' as any });
   const [actionModal, setActionModal] = useState({ visible: false, item: null as any });
+
 
   // API
   const { data: stats, isLoading: l1 } = useGetGroupPaymentStats(groupId);
@@ -74,13 +76,17 @@ const GroupStatsTab = ({ route }: any) => {
 
   const handleSettlement = async (item: any) => {
     try {
+      const categoryId = categories?.[0]?.id;
+      // Nếu không có category, vẫn cho phép tạo nhưng cảnh báo hoặc dùng default nếu backend cho phép
+      // Ở đây ta cứ lấy cái đầu tiên, nếu không có thì để chuỗi rỗng (backend có thể validate)
+      
       // 1. Tạo Bill "Thanh toán nợ"
       const newBill = await createBill({
         groupId,
         description: "Thanh toán nợ",
         totalAmount: item.amount,
         createdBy: String(appState?.userId || ''),
-        categoryId: categories?.[0]?.id || '',
+        categoryId: categoryId || '',
         status: 'COMPLETED',
         isPayment: true // ✅ Đánh dấu là thanh toán
       });
@@ -212,13 +218,112 @@ const GroupStatsTab = ({ route }: any) => {
           {activeTab === 'BALANCES' ? (
             <>
                <PersonalStatsCard netBalance={myNetBalance} totalPaid={myTotalPaid} actualCost={myActualCost} />
+               
+               {/* Phần Gợi ý thanh toán tối ưu - Chỉ hiển thị khi có nợ */}
+               {debtSuggestions.length > 0 && (
+                 <View style={styles.card}>
+                   <View style={styles.cardHeaderRow}>
+                     <Ionicons name="flash" size={20} color={APP_COLOR.ORANGE} />
+                     <Text style={[styles.cardHeader, { marginLeft: 8, marginBottom: 0 }]}>Thanh toán nhanh</Text>
+                   </View>
+                   <Text style={styles.cardSubtitle}>
+                     {debtSuggestions.length} giao dịch để sòng phẳng
+                   </Text>
+                   {debtSuggestions.map((item, i) => (
+                      <DebtSuggestionItem 
+                        key={i} 
+                        item={item} 
+                        getAvatar={getAvatar} 
+                        currentUserId={String(appState?.userId)}
+                        onPress={() => setActionModal({ visible: true, item })}
+                        onPay={() => {
+                          setConfirmModal({
+                            visible: true,
+                            title: "Xác nhận thanh toán",
+                            message: `Bạn có chắc chắn muốn ghi nhận đã trả ${item.amount.toLocaleString('vi-VN')}đ cho ${item.to}?`,
+                            type: "info",
+                            onConfirm: () => handleSettlement(item)
+                          });
+                        }}
+                        onRemind={() => {
+                          setConfirmModal({
+                            visible: true,
+                            title: "Gửi nhắc nợ",
+                            message: `Gửi thông báo nhắc ${item.from} trả ${item.amount.toLocaleString('vi-VN')}đ?`,
+                            type: "info",
+                            onConfirm: () => handleRemind(item)
+                          });
+                        }}
+                      />
+                   ))}
+                 </View>
+               )}
+
+               {/* Tổng quan số dư - Hiển thị dạng visual */}
                <View style={styles.card}>
-                 <Text style={styles.cardHeader}>Gợi ý thanh toán</Text>
-                 {debtSuggestions.length ? debtSuggestions.map((item, i) => <DebtSuggestionItem key={i} item={item} getAvatar={getAvatar} onPress={() => setActionModal({ visible: true, item })} />) : <Text style={styles.emptyText}>Không có khoản nợ nào.</Text>}
-               </View>
-               <View style={styles.card}>
-                 <Text style={styles.cardHeader}>Chi tiết công nợ</Text>
-                 {balances?.filter(b => parseFloat(b.netAmount) !== 0).length ? balances.map(b => parseFloat(b.netAmount) !== 0 && <BalanceItem key={b.userId} balance={b} avatar={getAvatar(b.userId)} onPress={() => router.push({ pathname: '/(tabs)/groups/member/[userId]', params: { userId: b.userId, userName: b.userName, groupId } })} />) : <Text style={styles.emptyText}>Sòng phẳng.</Text>}
+                 <View style={styles.cardHeaderRow}>
+                   <Ionicons name="wallet" size={20} color="#007AFF" />
+                   <Text style={[styles.cardHeader, { marginLeft: 8, marginBottom: 0 }]}>Số dư thành viên</Text>
+                 </View>
+                 
+                 {balances?.filter(b => parseFloat(b.netAmount) !== 0).length ? (
+                   <View style={styles.balanceVisual}>
+                     {/* Người được nhận (số dư dương) */}
+                     {balances.filter(b => parseFloat(b.netAmount) > 0).length > 0 && (
+                       <View style={styles.balanceSection}>
+                         <Text style={styles.balanceSectionTitle}>💰 Được nhận lại</Text>
+                         {balances.filter(b => parseFloat(b.netAmount) > 0)
+                           .sort((a, b) => parseFloat(b.netAmount) - parseFloat(a.netAmount))
+                           .map(b => (
+                             <TouchableOpacity 
+                               key={b.userId} 
+                               style={styles.balanceRow}
+                               onPress={() => router.push({ pathname: '/(tabs)/groups/member/[userId]', params: { userId: b.userId, userName: b.userName, groupId } })}
+                             >
+                               <View style={styles.balanceUser}>
+                                 <Avatar name={b.userName} avatar={getAvatar(b.userId)} size={36} />
+                                 <Text style={styles.balanceName}>{b.userName}</Text>
+                               </View>
+                               <Text style={[styles.balanceAmount, { color: '#4CAF50' }]}>
+                                 +{parseFloat(b.netAmount).toLocaleString('vi-VN')}đ
+                               </Text>
+                             </TouchableOpacity>
+                           ))
+                         }
+                       </View>
+                     )}
+                     
+                     {/* Người phải trả (số dư âm) */}
+                     {balances.filter(b => parseFloat(b.netAmount) < 0).length > 0 && (
+                       <View style={[styles.balanceSection, { marginTop: 15 }]}>
+                         <Text style={styles.balanceSectionTitle}>💸 Cần trả thêm</Text>
+                         {balances.filter(b => parseFloat(b.netAmount) < 0)
+                           .sort((a, b) => parseFloat(a.netAmount) - parseFloat(b.netAmount))
+                           .map(b => (
+                             <TouchableOpacity 
+                               key={b.userId} 
+                               style={styles.balanceRow}
+                               onPress={() => router.push({ pathname: '/(tabs)/groups/member/[userId]', params: { userId: b.userId, userName: b.userName, groupId } })}
+                             >
+                               <View style={styles.balanceUser}>
+                                 <Avatar name={b.userName} avatar={getAvatar(b.userId)} size={36} />
+                                 <Text style={styles.balanceName}>{b.userName}</Text>
+                               </View>
+                               <Text style={[styles.balanceAmount, { color: '#F44336' }]}>
+                                 {parseFloat(b.netAmount).toLocaleString('vi-VN')}đ
+                               </Text>
+                             </TouchableOpacity>
+                           ))
+                         }
+                       </View>
+                     )}
+                   </View>
+                 ) : (
+                   <View style={styles.allSettledContainer}>
+                     <Ionicons name="checkmark-circle" size={48} color="#4CAF50" />
+                     <Text style={styles.allSettledText}>🎉 Tất cả đã sòng phẳng!</Text>
+                   </View>
+                 )}
                </View>
             </>
           ) : (
@@ -240,12 +345,13 @@ const GroupStatsTab = ({ route }: any) => {
                 {filteredExpenses.map(item => (
                    <ExpenseItem 
                       key={item.id} 
-                      item={item} // 👈 QUAN TRỌNG: Đã truyền đúng prop item
+                      item={item}
                       payerName={getPayerName(item.paidBy)} 
                       onPress={(id) => router.push({ pathname: '/(tabs)/groups/expense/[expenseId]', params: { expenseId: id } })} 
                    />
                 ))}
                 {filteredExpenses.length === 0 && <Text style={styles.emptyText}>Không tìm thấy chi tiêu nào.</Text>}
+
              </View>
           )}
         </ScrollView>
@@ -304,6 +410,19 @@ const styles = StyleSheet.create({
   filterButton: { width: 44, height: 44, borderRadius: 10, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#eee' },
   filterActive: { borderColor: APP_COLOR.ORANGE, backgroundColor: '#FFF5E5' },
   fab: { position: 'absolute', right: 20, bottom: 20, backgroundColor: APP_COLOR.ORANGE, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6 },
+  
+  // New styles for improved balance display
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
+  cardSubtitle: { fontSize: 13, color: '#888', marginBottom: 12, marginLeft: 28 },
+  balanceVisual: { marginTop: 10 },
+  balanceSection: {},
+  balanceSectionTitle: { fontSize: 13, fontWeight: '600', color: '#666', marginBottom: 10 },
+  balanceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
+  balanceUser: { flexDirection: 'row', alignItems: 'center' },
+  balanceName: { fontSize: 15, color: '#333', fontWeight: '500', marginLeft: 10 },
+  balanceAmount: { fontSize: 15, fontWeight: 'bold' },
+  allSettledContainer: { alignItems: 'center', paddingVertical: 30 },
+  allSettledText: { fontSize: 16, color: '#4CAF50', fontWeight: '600', marginTop: 10 },
 });
 
 export default GroupStatsTab;

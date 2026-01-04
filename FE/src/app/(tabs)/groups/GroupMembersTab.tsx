@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Text } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useGetGroupMembers, useUserSearch, useAddMember, useGetGroupById, useRemoveMember, useGetGroupBalances } from '@/api/hooks';
 import { APP_COLOR } from '@/utils/constant';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -14,6 +15,7 @@ import ConfirmModal from '@/component/ConfirmModal';
 
 const GroupMembersTab = ({ route }: any) => {
   const { groupId } = route.params;
+  const router = useRouter();
   const { appState } = useCurrentApp();
   const currentUserId = appState?.userId;
 
@@ -21,6 +23,19 @@ const GroupMembersTab = ({ route }: any) => {
   const { data: group } = useGetGroupById(groupId);
   const { data: balances } = useGetGroupBalances(groupId);
   const { mutate: removeMember } = useRemoveMember(groupId);
+
+  const sortedMembers = useMemo(() => {
+    if (!members || !group) return members || [];
+    return [...members].sort((a, b) => {
+      const aId = a.userId || a.user?.id;
+      const bId = b.userId || b.user?.id;
+      const leaderId = group.createdBy;
+      
+      if (aId === leaderId) return -1;
+      if (bId === leaderId) return 1;
+      return 0;
+    });
+  }, [members, group]);
 
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
@@ -88,15 +103,17 @@ const GroupMembersTab = ({ route }: any) => {
       </View>
       
       <FlatList
-        data={members || []}
+        data={sortedMembers || []}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-            <MemberItem 
-                item={item} 
-                currentUserId={currentUserId}
-                isLeader={isLeader}
-                onRemove={handleRemoveRequest}
-            />
+            <TouchableOpacity onPress={() => router.push(`/(tabs)/groups/member/${item.userId || item.user?.id}`)}>
+                <MemberItem 
+                    item={item} 
+                    currentUserId={currentUserId}
+                    isLeader={isLeader}
+                    onRemove={handleRemoveRequest}
+                />
+            </TouchableOpacity>
         )}
         ListEmptyComponent={<View style={styles.center}><Text style={styles.emptyText}>Chưa có thành viên nào.</Text></View>}
         onRefresh={refetch} refreshing={isLoading}

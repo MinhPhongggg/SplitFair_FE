@@ -8,6 +8,10 @@ export interface IUserAuth {
   role: string;
   avatar?: string;
   status?: string;
+  // Thông tin ngân hàng
+  bankCode?: string;
+  bankAccountNo?: string;
+  bankAccountName?: string;
 }
 
 interface AppContextType {

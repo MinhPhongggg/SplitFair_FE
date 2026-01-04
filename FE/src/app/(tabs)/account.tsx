@@ -20,13 +20,14 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import ShareInput from "@/component/input/share.input";
 import { useCurrentApp } from "@/context/app.context";
 import { APP_COLOR } from "@/utils/constant";
-import { useUpdateUser, useChangePassword } from "@/api/hooks";
+import { useUpdateUser, useChangePassword, useUpdateBankInfo } from "@/api/hooks";
 import { getURLBaseBackend } from "@/utils/api";
 import { useToast } from "@/context/toast.context";
 import ConfirmModal from "@/component/ConfirmModal";
 import Avatar from "@/component/Avatar";
 import { AVATAR_PRESETS, PRESET_KEYS } from "@/utils/avatar-presets";
 import Header from "@/component/Header";
+import { BANK_LIST } from "@/types/user.types";
 
 // --- Components ---
 
@@ -96,10 +97,17 @@ const AccountPage = () => {
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
+  // Bank Info State
+  const [showBankInfo, setShowBankInfo] = useState(false);
+  const [bankCode, setBankCode] = useState(appState?.bankCode || "");
+  const [bankAccountNo, setBankAccountNo] = useState(appState?.bankAccountNo || "");
+  const [bankAccountName, setBankAccountName] = useState(appState?.bankAccountName || "");
+
   // 2. Hooks
   const { mutate: updateUser, isPending: isUpdatingUser } = useUpdateUser();
   const { mutate: changePassword, isPending: isChangingPassword } =
     useChangePassword();
+  const { mutate: updateBankInfo, isPending: isUpdatingBankInfo } = useUpdateBankInfo();
 
   // 3. Header Config (Ẩn nút mặc định)
   useLayoutEffect(() => {
@@ -181,6 +189,34 @@ const AccountPage = () => {
             "error",
             "Lỗi",
             err.response?.data?.message || "Đổi mật khẩu thất bại."
+          );
+        },
+      }
+    );
+  };
+
+  const handleUpdateBankInfo = () => {
+    if (!bankCode || !bankAccountNo || !bankAccountName) {
+      showToast("error", "Lỗi", "Vui lòng điền đầy đủ thông tin ngân hàng.");
+      return;
+    }
+
+    updateBankInfo(
+      {
+        bankCode: bankCode,
+        bankAccountNo: bankAccountNo,
+        bankAccountName: bankAccountName.toUpperCase(), // Tên viết hoa
+      },
+      {
+        onSuccess: () => {
+          showToast("success", "Thành công", "Đã cập nhật thông tin ngân hàng.");
+          setShowBankInfo(false);
+        },
+        onError: (err: any) => {
+          showToast(
+            "error",
+            "Lỗi",
+            err.response?.data?.message || "Cập nhật thất bại."
           );
         },
       }
@@ -345,6 +381,12 @@ const AccountPage = () => {
 
       <Section title="Tài khoản">
         <SettingItem
+          icon="card-outline"
+          label="Thông tin ngân hàng"
+          value={appState?.bankCode || "Chưa thiết lập"}
+          onPress={() => setShowBankInfo(true)}
+        />
+        <SettingItem
           icon="lock-closed-outline"
           label="Thay đổi mật khẩu"
           onPress={() => setShowChangePassword(true)}
@@ -419,6 +461,90 @@ const AccountPage = () => {
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <Text style={styles.buttonText}>Đổi mật khẩu</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Bank Info Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showBankInfo}
+        onRequestClose={() => setShowBankInfo(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Thông tin ngân hàng</Text>
+              <TouchableOpacity onPress={() => setShowBankInfo(false)}>
+                <Ionicons name="close-circle" size={28} color="#eee" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ gap: 15, marginTop: 10 }}>
+              {/* Bank Selector */}
+              <View>
+                <Text style={styles.inputLabel}>Ngân hàng</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.bankList}
+                >
+                  {BANK_LIST.map((bank) => (
+                    <TouchableOpacity
+                      key={bank.code}
+                      style={[
+                        styles.bankItem,
+                        bankCode === bank.code && styles.bankItemSelected,
+                      ]}
+                      onPress={() => setBankCode(bank.code)}
+                    >
+                      <Text
+                        style={[
+                          styles.bankItemText,
+                          bankCode === bank.code && styles.bankItemTextSelected,
+                        ]}
+                      >
+                        {bank.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                {bankCode ? (
+                  <Text style={styles.selectedBankText}>
+                    Đã chọn: <Text style={{ fontWeight: "bold" }}>{bankCode}</Text>
+                  </Text>
+                ) : null}
+              </View>
+
+              <ShareInput
+                title="Số tài khoản"
+                value={bankAccountNo}
+                onChangeText={setBankAccountNo}
+                keyboardType="numeric"
+              />
+
+              <ShareInput
+                title="Tên chủ tài khoản (viết hoa, không dấu)"
+                value={bankAccountName}
+                onChangeText={(text: string) => setBankAccountName(text.toUpperCase())}
+              />
+
+              <TouchableOpacity
+                style={[styles.button, styles.saveButton, { marginTop: 20 }]}
+                onPress={handleUpdateBankInfo}
+                disabled={isUpdatingBankInfo}
+              >
+                {isUpdatingBankInfo ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Lưu thông tin</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -617,6 +743,44 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   modalTitle: { fontSize: 18, fontWeight: "bold", color: "#333" },
+
+  // --- Bank Info Styles ---
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 8,
+  },
+  bankList: {
+    flexDirection: "row",
+    marginBottom: 8,
+  },
+  bankItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#F5F5F5",
+    borderRadius: 20,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  bankItemSelected: {
+    backgroundColor: APP_COLOR.ORANGE,
+    borderColor: APP_COLOR.ORANGE,
+  },
+  bankItemText: {
+    fontSize: 13,
+    color: "#666",
+    fontWeight: "500",
+  },
+  bankItemTextSelected: {
+    color: "white",
+  },
+  selectedBankText: {
+    fontSize: 12,
+    color: "#888",
+    marginTop: 5,
+  },
 });
 
 export default AccountPage;

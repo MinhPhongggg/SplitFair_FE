@@ -30,7 +30,7 @@ import {
   updateGroup,
   deleteGroup,
 } from '@/api/groups';
-import { getAllUsers, searchUsers, updateUser,uploadAvatarAPI } from '@/api/users';
+import { getAllUsers, searchUsers, updateUser, uploadAvatarAPI, updateMyBankInfo, BankInfoRequest } from '@/api/users';
 import {
   getExpensesByBill,
   createExpense,
@@ -42,7 +42,7 @@ import {
   updateExpense,
   getSharesByUser,
 } from '@/api/expense';
-import { getAllDebtsByUser, getReadableBalances, markDebtAsSettled, settleBatchDebts } from '@/api/debt';
+import { getAllDebtsByUser, getReadableBalances, markDebtAsSettled, settleBatchDebts, requestPayment, confirmPayment, rejectPayment } from '@/api/debt';
 import { createBill, getBillsByGroup, getBillById, deleteBill } from '@/api/bills';
 import { getAllCategories } from '@/api/category';
 import { getGroupPaymentStats, getGroupBalances } from '@/api/stats';
@@ -52,7 +52,7 @@ import {
   markAsRead,
   markAllAsRead,
 } from '@/api/notifications';
-import { Debt } from '@/types/debt.types';
+import { Debt, VietQrDTO } from '@/types/debt.types';
 
 // --- Auth Hooks (Sử dụng api.ts của splitapp-fe) ---
 interface LoginPayload {
@@ -158,6 +158,27 @@ export const useUploadAvatar = () => {
     }
   });
 };
+
+// Hook cập nhật thông tin ngân hàng
+export const useUpdateBankInfo = () => {
+  const { setAppState, appState } = useCurrentApp();
+
+  return useMutation<void, AxiosError, BankInfoRequest>({
+    mutationFn: (request) => updateMyBankInfo(request),
+    onSuccess: (_, variables) => {
+      // Cập nhật context với thông tin bank mới
+      if (appState) {
+        setAppState({
+          ...appState,
+          bankCode: variables.bankCode,
+          bankAccountNo: variables.bankAccountNo,
+          bankAccountName: variables.bankAccountName,
+        });
+      }
+    },
+  });
+};
+
 // --- Group Hooks ---
 export const useGetGroups = () => {
   return useQuery<Group[], AxiosError>({
@@ -539,6 +560,54 @@ export const useSettleBatchDebts = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['debts'] });
       queryClient.invalidateQueries({ queryKey: ['stats'] });
+    },
+  });
+};
+
+// ========== HOOKS CHO TÍNH NĂNG XÁC NHẬN THANH TOÁN ==========
+
+/**
+ * Hook để người nợ yêu cầu thanh toán
+ * - Gửi thông báo cho chủ nợ
+ * - Trả về VietQR để chuyển tiền
+ */
+export const useRequestPayment = () => {
+  const queryClient = useQueryClient();
+  return useMutation<VietQrDTO, AxiosError, string>({
+    mutationFn: (debtId) => requestPayment(debtId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['debts'] });
+    },
+  });
+};
+
+/**
+ * Hook để chủ nợ xác nhận đã nhận tiền
+ * - Chuyển trạng thái sang SETTLED
+ */
+export const useConfirmPayment = () => {
+  const queryClient = useQueryClient();
+  return useMutation<Debt, AxiosError, string>({
+    mutationFn: (debtId) => confirmPayment(debtId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['debts'] });
+      queryClient.invalidateQueries({ queryKey: ['stats'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+};
+
+/**
+ * Hook để chủ nợ từ chối (chưa nhận được tiền)
+ * - Chuyển trạng thái về UNSETTLED
+ */
+export const useRejectPayment = () => {
+  const queryClient = useQueryClient();
+  return useMutation<Debt, AxiosError, string>({
+    mutationFn: (debtId) => rejectPayment(debtId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['debts'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
 };

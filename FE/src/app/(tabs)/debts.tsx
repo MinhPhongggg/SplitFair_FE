@@ -13,6 +13,8 @@ import {
   UIManager,
   ScrollView,
   TextInput,
+  Modal,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -21,11 +23,14 @@ import {
   useGetAllDebtsByUser,
   useSettleDebt,
   useSettleBatchDebts,
+  useRequestPayment,
+  useConfirmPayment,
+  useRejectPayment,
 } from "@/api/hooks";
 import { markDebtAsSettled } from "@/api/debt";
 import { APP_COLOR } from "@/utils/constant";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { Debt } from "@/types/debt.types";
+import { Debt, VietQrDTO } from "@/types/debt.types";
 import Avatar from "@/component/Avatar";
 import { useToast } from "@/context/toast.context";
 import { getAccountAPI } from "@/utils/api";
@@ -56,6 +61,10 @@ const DebtScreen = () => {
   const [activeTab, setActiveTab] = useState<TabType>("PAYABLES");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // State cho VietQR Modal
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrData, setQrData] = useState<VietQrDTO | null>(null);
 
   // Tự động lấy lại thông tin user nếu bị mất state (F5/Reload)
   useEffect(() => {
@@ -81,18 +90,27 @@ const DebtScreen = () => {
   const { data: allDebts, isLoading, refetch } = useGetAllDebtsByUser(userId);
   const { mutate: settleDebt } = useSettleDebt();
   const { mutate: settleBatchDebts } = useSettleBatchDebts();
+  const { mutate: requestPayment, isPending: isRequesting } = useRequestPayment();
+  const { mutate: confirmPayment, isPending: isConfirming } = useConfirmPayment();
+  const { mutate: rejectPayment, isPending: isRejecting } = useRejectPayment();
 
-  const { groupedPayables, groupedReceivables, overview, suggestions } =
+  const { groupedPayables, groupedReceivables, pendingDebts, overview, suggestions } =
     useMemo(() => {
       if (!allDebts)
         return {
           groupedPayables: [],
           groupedReceivables: [],
-          overview: { pay: 0, rec: 0, net: 0 },
+          pendingDebts: [],
+          overview: { pay: 0, rec: 0, net: 0, pending: 0 },
           suggestions: [],
         };
 
+      // Lọc các khoản nợ chưa thanh toán và đang chờ xác nhận
+      const activeDebts = allDebts.filter(
+        (d) => d.status === "UNSETTLED" || d.status === "PENDING_CONFIRMATION"
+      );
       const unsettled = allDebts.filter((d) => d.status === "UNSETTLED");
+      const pending = allDebts.filter((d) => d.status === "PENDING_CONFIRMATION");
 
       const groupData = (items: Debt[], isPayable: boolean): GroupedDebt[] => {
         const map = new Map<string, GroupedDebt>();
@@ -132,14 +150,16 @@ const DebtScreen = () => {
         return Array.from(map.values());
       };
 
-      const pay = unsettled.filter((d) => d.fromUserId === userId);
-      const receive = unsettled.filter((d) => d.toUserId === userId);
+      // Bao gồm cả UNSETTLED và PENDING_CONFIRMATION
+      const pay = activeDebts.filter((d) => d.fromUserId === userId);
+      const receive = activeDebts.filter((d) => d.toUserId === userId);
 
       const gPay = groupData(pay, true);
       const gRec = groupData(receive, false);
 
       const totalPay = gPay.reduce((sum, i) => sum + i.totalAmount, 0);
       const totalRec = gRec.reduce((sum, i) => sum + i.totalAmount, 0);
+      const totalPending = pending.reduce((sum, d) => sum + d.amount, 0);
 
       // Smart Suggestions Logic
       const suggs: any[] = [];
@@ -148,6 +168,10 @@ const DebtScreen = () => {
         if (r) {
           const diff = r.totalAmount - p.totalAmount;
           if (diff !== 0) {
+            // Collect all debt IDs
+            const payDebtIds = p.debts.map((d) => d.id);
+            const recDebtIds = r.debts.map((d) => d.id);
+
             suggs.push({
               partnerId: p.partnerId,
               partnerName: p.partnerName,
@@ -155,6 +179,7 @@ const DebtScreen = () => {
               recAmount: r.totalAmount,
               netAmount: Math.abs(diff),
               action: diff > 0 ? "RECEIVE" : "PAY",
+              debtIds: [...payDebtIds, ...recDebtIds],
             });
           }
         }
@@ -163,10 +188,92 @@ const DebtScreen = () => {
       return {
         groupedPayables: gPay,
         groupedReceivables: gRec,
-        overview: { pay: totalPay, rec: totalRec, net: totalRec - totalPay },
+        pendingDebts: pending,
+        overview: { pay: totalPay, rec: totalRec, net: totalRec - totalPay, pending: totalPending },
         suggestions: suggs,
       };
     }, [allDebts, userId, searchQuery]);
+
+  // Người nợ nhấn "Thanh toán" - gửi yêu cầu và hiển thị QR
+  const handleRequestPayment = (debt: Debt) => {
+    Alert.alert(
+      "Thanh toán nợ",
+      `Bạn muốn thanh toán ${debt.amount.toLocaleString()}đ cho ${debt.toUserName}?`,
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Thanh toán",
+          onPress: () => {
+            requestPayment(debt.id, {
+              onSuccess: (vietQr) => {
+                setQrData(vietQr);
+                setShowQrModal(true);
+                showToast(
+                  "success",
+                  "Đã gửi yêu cầu",
+                  "Vui lòng chuyển tiền và chờ chủ nợ xác nhận."
+                );
+              },
+              onError: (err: any) => {
+                showToast("error", "Lỗi", err.response?.data?.message || err.message);
+              },
+            });
+          },
+        },
+      ]
+    );
+  };
+
+  // Chủ nợ xác nhận đã nhận tiền
+  const handleConfirmPayment = (debt: Debt) => {
+    Alert.alert(
+      "Xác nhận thanh toán",
+      `Bạn đã nhận được ${debt.amount.toLocaleString()}đ từ ${debt.fromUserName}?`,
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Đã nhận tiền",
+          onPress: () => {
+            confirmPayment(debt.id, {
+              onSuccess: () => {
+                showToast("success", "Thành công", "Đã xác nhận thanh toán.");
+                refetch();
+              },
+              onError: (err: any) => {
+                showToast("error", "Lỗi", err.response?.data?.message || err.message);
+              },
+            });
+          },
+        },
+      ]
+    );
+  };
+
+  // Chủ nợ từ chối (chưa nhận được tiền)
+  const handleRejectPayment = (debt: Debt) => {
+    Alert.alert(
+      "Từ chối thanh toán",
+      `Bạn chưa nhận được tiền từ ${debt.fromUserName}?`,
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Chưa nhận",
+          style: "destructive",
+          onPress: () => {
+            rejectPayment(debt.id, {
+              onSuccess: () => {
+                showToast("info", "Đã từ chối", "Thông báo đã được gửi cho người nợ.");
+                refetch();
+              },
+              onError: (err: any) => {
+                showToast("error", "Lỗi", err.response?.data?.message || err.message);
+              },
+            });
+          },
+        },
+      ]
+    );
+  };
 
   const handleSettle = (debt: Debt) => {
     Alert.alert(
@@ -187,6 +294,32 @@ const DebtScreen = () => {
                   "Đã cập nhật trạng thái nợ."
                 ),
               onError: () => showToast("error", "Lỗi", "Không thể cập nhật."),
+            });
+          },
+        },
+      ]
+    );
+  };
+
+  const handleOptimizeDebt = (suggestion: any) => {
+    Alert.alert(
+      "Tối ưu nợ",
+      `Bạn có chắc muốn thực hiện tối ưu nợ với ${
+        suggestion.partnerName
+      }? \n\nHệ thống sẽ đánh dấu tất cả các khoản nợ cũ là ĐÃ XONG và ghi nhận khoản thanh toán chênh lệch ${suggestion.netAmount.toLocaleString()}đ.`,
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Đồng ý",
+          onPress: () => {
+            settleBatchDebts(suggestion.debtIds, {
+              onSuccess: () => {
+                showToast("success", "Thành công", "Đã tối ưu hóa công nợ.");
+                refetch();
+              },
+              onError: () => {
+                showToast("error", "Lỗi", "Có lỗi xảy ra khi xử lý.");
+              },
             });
           },
         },
@@ -303,19 +436,25 @@ const DebtScreen = () => {
                   Thay vì trả {s.payAmount.toLocaleString()}đ & nhận{" "}
                   {s.recAmount.toLocaleString()}đ
                 </Text>
-                <View style={styles.suggestionActionContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.suggestionBtn,
+                    s.action === "RECEIVE"
+                      ? { backgroundColor: "#E8F5E9" }
+                      : { backgroundColor: "#FFEBEE" },
+                  ]}
+                  onPress={() => handleOptimizeDebt(s)}
+                >
                   <Text
                     style={[
-                      styles.suggestionAction,
-                      s.action === "RECEIVE"
-                        ? styles.textGreen
-                        : styles.textRed,
+                      styles.suggestionBtnText,
+                      s.action === "RECEIVE" ? styles.textGreen : styles.textRed,
                     ]}
                   >
                     {s.action === "RECEIVE" ? "NHẬN" : "TRẢ"}{" "}
                     {s.netAmount.toLocaleString()} đ
                   </Text>
-                </View>
+                </TouchableOpacity>
               </View>
             </View>
           ))}
@@ -403,7 +542,12 @@ const DebtScreen = () => {
             {Object.entries(debtsByGroup).map(([groupName, groupDebts]) => (
               <View key={groupName} style={styles.subGroupContainer}>
                 <Text style={styles.subGroupTitle}>{groupName}</Text>
-                {groupDebts.map((debt, index) => (
+                {groupDebts.map((debt, index) => {
+                  const isPending = debt.status === "PENDING_CONFIRMATION";
+                  const isCreditor = debt.toUserId === userId;
+                  const isDebtor = debt.fromUserId === userId;
+
+                  return (
                   <TouchableOpacity
                     key={debt.id}
                     style={styles.debtItem}
@@ -429,13 +573,20 @@ const DebtScreen = () => {
                             )
                           : "Không có ngày"}
                       </Text>
+                      {isPending && (
+                        <View style={styles.pendingBadge}>
+                          <Ionicons name="time-outline" size={12} color="#FF9800" />
+                          <Text style={styles.pendingText}>Đang chờ xác nhận</Text>
+                        </View>
+                      )}
                     </View>
                     <View style={styles.debtAction}>
                       <Text style={styles.debtAmount}>
                         {debt.amount.toLocaleString("vi-VN")} đ
                       </Text>
                       <View style={{ flexDirection: "row" }}>
-                        {!isPayable && (
+                        {/* Nút nhắc nợ cho chủ nợ */}
+                        {!isPayable && !isPending && (
                           <TouchableOpacity
                             style={[styles.iconBtn, { marginRight: 8 }]}
                             onPress={() =>
@@ -453,7 +604,42 @@ const DebtScreen = () => {
                             />
                           </TouchableOpacity>
                         )}
-                        <TouchableOpacity
+
+                        {/* Hiển thị button theo trạng thái */}
+                        {isPending && isDebtor ? (
+                          // Người nợ đang chờ xác nhận
+                          <View style={styles.waitingBtn}>
+                            <Ionicons name="hourglass-outline" size={14} color="#FF9800" />
+                            <Text style={styles.waitingText}>Chờ xác nhận</Text>
+                          </View>
+                        ) : isPending && isCreditor ? (
+                          // Chủ nợ cần xác nhận/từ chối
+                          <View style={{ flexDirection: "row" }}>
+                            <TouchableOpacity
+                              style={styles.rejectBtn}
+                              onPress={() => handleRejectPayment(debt)}
+                            >
+                              <Ionicons name="close" size={16} color="#FF453A" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.confirmBtn}
+                              onPress={() => handleConfirmPayment(debt)}
+                            >
+                              <Ionicons name="checkmark" size={16} color="white" />
+                              <Text style={styles.confirmBtnText}>Xác nhận</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : isPayable ? (
+                          // Người nợ - chưa thanh toán
+                          <TouchableOpacity
+                            style={[styles.settleBtn, styles.btnOutline]}
+                            onPress={() => handleRequestPayment(debt)}
+                          >
+                            <Text style={styles.settleBtnText}>Trả</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          // Chủ nợ - chưa có yêu cầu
+                          <TouchableOpacity
                           style={[
                             styles.settleBtn,
                             isPayable ? styles.btnOutline : styles.btnFill,
@@ -469,10 +655,12 @@ const DebtScreen = () => {
                             {isPayable ? "Trả" : "Nhận"}
                           </Text>
                         </TouchableOpacity>
+                        )}
                       </View>
                     </View>
                   </TouchableOpacity>
-                ))}
+                  );
+                })}
               </View>
             ))}
           </View>
@@ -565,6 +753,76 @@ const DebtScreen = () => {
           </View>
         }
       />
+
+      {/* Modal hiển thị VietQR */}
+      <Modal
+        visible={showQrModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowQrModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.qrModalContent}>
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => setShowQrModal(false)}
+            >
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+
+            <Text style={styles.qrModalTitle}>Quét mã để thanh toán</Text>
+
+            {qrData && (
+              <>
+                <Image
+                  source={{ uri: qrData.qrUrl }}
+                  style={styles.qrImage}
+                  resizeMode="contain"
+                />
+
+                <View style={styles.qrInfo}>
+                  <View style={styles.qrInfoRow}>
+                    <Text style={styles.qrInfoLabel}>Ngân hàng:</Text>
+                    <Text style={styles.qrInfoValue}>{qrData.bankCode}</Text>
+                  </View>
+                  <View style={styles.qrInfoRow}>
+                    <Text style={styles.qrInfoLabel}>Số tài khoản:</Text>
+                    <Text style={styles.qrInfoValue}>{qrData.accountNo}</Text>
+                  </View>
+                  <View style={styles.qrInfoRow}>
+                    <Text style={styles.qrInfoLabel}>Chủ tài khoản:</Text>
+                    <Text style={styles.qrInfoValue}>{qrData.accountName}</Text>
+                  </View>
+                  <View style={styles.qrInfoRow}>
+                    <Text style={styles.qrInfoLabel}>Số tiền:</Text>
+                    <Text style={[styles.qrInfoValue, styles.textRed]}>
+                      {qrData.amount.toLocaleString("vi-VN")} đ
+                    </Text>
+                  </View>
+                  <View style={styles.qrInfoRow}>
+                    <Text style={styles.qrInfoLabel}>Nội dung:</Text>
+                    <Text style={styles.qrInfoValue}>{qrData.content}</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.qrNote}>
+                  Sau khi chuyển tiền, vui lòng đợi chủ nợ xác nhận.
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.qrDoneBtn}
+                  onPress={() => {
+                    setShowQrModal(false);
+                    refetch();
+                  }}
+                >
+                  <Text style={styles.qrDoneBtnText}>Đã chuyển tiền</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -668,14 +926,20 @@ const styles = StyleSheet.create({
   suggestionContent: { flex: 1 },
   suggestionText: { fontSize: 14, color: "#333", marginBottom: 4 },
   suggestionDetail: { fontSize: 12, color: "#888", marginBottom: 8 },
-  suggestionActionContainer: {
+  suggestionBtn: {
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
     alignSelf: "flex-start",
-    backgroundColor: "#F5F7FA",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  suggestionAction: { fontSize: 13, fontWeight: "bold" },
+  suggestionBtnText: {
+    fontWeight: "bold",
+    fontSize: 14,
+    textTransform: "uppercase",
+  },
 
   tabsContainer: {
     flexDirection: "row",
@@ -792,6 +1056,140 @@ const styles = StyleSheet.create({
 
   textRed: { color: "#FF453A" },
   textGreen: { color: "#32D74B" },
+
+  // Pending Badge
+  pendingBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+    backgroundColor: "#FFF3E0",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    alignSelf: "flex-start",
+  },
+  pendingText: {
+    fontSize: 11,
+    color: "#FF9800",
+    marginLeft: 4,
+    fontWeight: "500",
+  },
+
+  // Waiting Button (for debtor when pending)
+  waitingBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF3E0",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FF9800",
+  },
+  waitingText: {
+    fontSize: 12,
+    color: "#FF9800",
+    marginLeft: 4,
+    fontWeight: "500",
+  },
+
+  // Confirm/Reject Buttons (for creditor when pending)
+  confirmBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#32D74B",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  confirmBtnText: {
+    fontSize: 12,
+    color: "white",
+    marginLeft: 4,
+    fontWeight: "600",
+  },
+  rejectBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFEBEE",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FF453A",
+  },
+
+  // QR Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  qrModalContent: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  modalCloseBtn: {
+    alignSelf: "flex-end",
+    padding: 5,
+  },
+  qrModalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 20,
+    color: "#333",
+  },
+  qrImage: {
+    width: 250,
+    height: 250,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  qrInfo: {
+    backgroundColor: "#F5F7FA",
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 15,
+  },
+  qrInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
+  qrInfoLabel: {
+    fontSize: 14,
+    color: "#666",
+  },
+  qrInfoValue: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+  },
+  qrNote: {
+    fontSize: 13,
+    color: "#888",
+    textAlign: "center",
+    marginBottom: 15,
+    fontStyle: "italic",
+  },
+  qrDoneBtn: {
+    backgroundColor: APP_COLOR.ORANGE,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  qrDoneBtnText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
 });
 
 export default DebtScreen;

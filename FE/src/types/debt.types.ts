@@ -1,5 +1,5 @@
 // src/types/debt.types.ts
-export type DebtStatus = 'UNSETTLED' | 'SETTLED';
+export type DebtStatus = 'UNSETTLED' | 'PENDING_CONFIRMATION' | 'SETTLED';
 
 export interface Debt {
   id: string;
@@ -16,4 +16,15 @@ export interface Debt {
 
   expenseDescription?: string;
   createdTime?: string;
+}
+
+// VietQR response khi yêu cầu thanh toán
+export interface VietQrDTO {
+  bankCode: string;
+  accountNo: string;
+  accountName: string;
+  amount: number;
+  content: string;
+  qrContent: string;
+  qrUrl: string;
 }
